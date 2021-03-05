@@ -1,5 +1,6 @@
 #include "commands.h"
 
+int init_flag = false;
 
 
 int make_command(char* buff, int length)
@@ -10,6 +11,14 @@ int make_command(char* buff, int length)
 	char* next = NULL;
 	char* str = NULL;
     int length_left;
+
+	if (init_flag)
+	{
+		dlm_init();
+		init_flag = false;
+	}
+
+
     str = buff;
     length_left = length;
 

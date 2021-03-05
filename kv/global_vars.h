@@ -2,6 +2,8 @@
 
 #define GLOBAL_VARS
 
+#define PR_DLM_LVB_LEN 256
+
 extern char* this_machine_id;
 
 extern struct key_node* key_head;

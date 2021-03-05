@@ -13,6 +13,10 @@ struct key_node* key_tail = NULL;
 struct lock_node* lock_head = NULL;
 struct lock_node* lock_tail = NULL;
 
+
+int status;
+dlm_lockspace_t *ls = NULL;
+
 module_param(this_machine_id, charp, 0);
 
 
@@ -105,12 +109,42 @@ int unlock_key(char* key_name)
 
 
 
-int register_key(char *key, char* value)
+
+
+//
+//
+//static inline int kv_dlm_new_lockspace(const char *name, int namelen,
+//					 dlm_lockspace_t **lockspace,
+//					 uint32_t flags,
+//					 int lvblen)
+//{
+//	return dlm_new_lockspace(name, NULL, flags, lvblen, NULL, NULL, NULL,
+//				 lockspace);
+//}
+//
+
+static int init_ls(void)
 {
-	return insert_key(create_key(key, value));
+	int status;
+	status = dlm_new_lockspace("new_ls8", "mycluster", DLM_LSFL_NEWEXCL | DLM_LSFL_FS,
+		      PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
+	printk("kv : ls_create_status = %i", status);
+	return status;
+
 }
 
 
+int dlm_init(void)
+{
+	int res;
+	char* lsp_name = "testlsp8";
+
+	res = init_ls();
+	if (res) {
+		printk("Creating DLM lockspace %s failed: %d", lsp_name, res);
+	}
+	return res;
+}
 
 static void make_test_keys(void)
 {
@@ -118,8 +152,8 @@ static void make_test_keys(void)
     char first_key_value[]       = "secret";
     char second_key[]            = "foo";
     char second_key_value[]      = "bar";
-    insert_key(create_key(first_key, first_key_value));
-    insert_key(create_key(second_key, second_key_value));
+    register_key(first_key, first_key_value);
+    register_key(second_key, second_key_value);
 }
 
 
@@ -137,5 +171,102 @@ void add_test_data(void)
 }
 
 
+//static void scst_dlm_ast(void *astarg)
+//{
+//	struct scst_lksb *scst_lksb = astarg;
+//
+//	complete(&scst_lksb->compl);
+//}
+//
+//
+//static int scst_dlm_lock_wait(dlm_lockspace_t *ls, int mode,
+//			      struct scst_lksb *lksb, int flags,
+//			      const char *name, void (*bast)(void *, int))
+//{
+//	int res;
+//
+//	struct dlm_lksb lksb_lksb;
+//	lksb->lksb = lksb_lksb;
+//	init_completion(&lksb->compl);
+//	res = dlm_lock(ls, mode, &lksb->lksb, flags,
+//			    (void *)name, name ? strlen(name) : 0, 0,
+//			    scst_dlm_ast, lksb, bast);
+//
+//	if (res < 0)
+//	{
+//		printk("res < 0");
+//		goto out;
+//	}
+//	res = wait_for_completion_timeout(&lksb->compl, 60 * HZ);
+//	if (res > 0)
+//		res = lksb->lksb.sb_status;
+//	else if (res == 0)
+//		res = -ETIMEDOUT;
+//	if (res < 0) {
+//		//int res2 = scst_dlm_cancel(ls, lksb, flags, name);
+//
+//		printk("canceling lock %s / %08x failed: %d\n",
+//		     name ? : "?", lksb->lksb.sb_lkid, res);
+//	}
+//
+//out:
+//	return res;
+//}
+
+
+static int my_dlm_lock(int mode, char* name, char* value)
+{
+	int res;
+	struct dlm_lksb new_lksb;
+
+	new_lksb.sb_lvbptr = value;
+	printk("dlm : ls: %p" , ls);
+	res = dlm_lock(ls, mode, &new_lksb, 0,
+			    name, name ? strlen(name) : 0, 0,
+			    NULL, NULL, NULL);
+	printk("dlm : my_dlm_lock_res = %i, EINVAL = %i", res, EINVAL);
+	return res;
+
+}
+
+
+int register_key(char *key, char* value)
+{
+	int status;
+	struct scst_lksb lksb;
+
+	if (ls == NULL)
+	{
+		printk("ls was NULL");
+		init_ls();
+	}
+	if (ls == NULL)
+	{
+		printk("ls still 0 loooooooool");
+	}
+	else
+	{
+		printk("ls is not NULL");
+	}
+
+
+	printk("kv : registring key");
+	status  = my_dlm_lock(DLM_LOCK_EX, key, value);
+//	status = dlm_lock(ls,				/* dlm_lockspace_t */
+//					  DLM_LOCK_EX,      /* mode  */
+//					  &lksb,   			/* addr of lock status block */
+//					  0,   		    	/* flags  */
+//					  "RES-A",   		/* name  */
+//					  5,  				/* namelen  */
+//					  0,  		    	/* ast routine triggered */
+//					  NULL,   				/* astargs */
+//					  0,				/* ? */
+//					  0); 				/* ?  */
+	if ( status < 0)
+	{
+		printk( "dlmlock : lock error, status: %i", status);
+	}
+	return insert_key(create_key(key, value));
+}
 
 
