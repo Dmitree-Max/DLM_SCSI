@@ -20,20 +20,19 @@
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define KV_BUFFER_SIZE 1024
+#define PRE_PREFIX "pre_"
+#define POST_PREFIX "post_"
 
-struct scst_lksb {
-	struct dlm_lksb  lksb;
-	struct completion compl;
-	struct scst_pr_dlm_data *pr_dlm;
-};
 
 int register_key(char *key, char* value);
 int lock_key(char *key);
 int unlock_key(char *key);
 int get_values(char *device_buffer, size_t size_in_min_buffer_left, loff_t *ppos);
 int dlm_init(void);
+int dlm_get_lkvb(struct dlm_block* block);
 
 void add_test_data(void);
+
 
 
 #endif

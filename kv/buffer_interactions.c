@@ -10,17 +10,25 @@ int fill_buffer_with_keys(char* buffer, int length, int* offset)
     int offset_controller = 0;
     struct key_node* cur_node = key_head;
     int bytes_in_buffer = 0;
-	char separator[] = " = ";
-	int max_bytes_to_copy;
+	char* separator = " = ";
+	char* data_value;
+	int max_bytes_to_copy, key_string_length;
+	int temp;
+	struct dlm_block* block_dlm;
 
     while (cur_node != NULL)
     {
-		int key_string_length = strlen(cur_node->data->key) + strlen(cur_node->data->value) + strlen(separator) + 1; // 1 for \n
+    	block_dlm = cur_node->dlm_block;
+    	temp = dlm_get_lkvb(block_dlm);
+    	printk("kv : temp = %i", temp);
+    	data_value = cur_node->data->value;
+
+		key_string_length = strlen(cur_node->data->key) + strlen(data_value) + strlen(separator) + 1; // 1 for \n
 		if (offset_controller + key_string_length > *offset)
 		{
 			strcpy(temp_buffer, cur_node->data->key);
 			strcat(temp_buffer, separator);
-			strcat(temp_buffer, cur_node->data->value);
+			strcat(temp_buffer, data_value);
 			strcat(temp_buffer, "\n");
 
 			// not copy more then buffer

@@ -8,6 +8,8 @@
 
 #include "global_vars.h"
 #include "structures.h"
+#include "kv.h"
+
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 

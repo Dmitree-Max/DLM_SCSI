@@ -3,11 +3,26 @@
 struct key_node* create_key_node(struct key_value* key)
 {
 	struct key_node* new_node =  kmalloc(sizeof(struct key_node), GFP_KERNEL);
+	struct dlm_block* new_block = create_dlm_block(key->key, key->value);
+
 	new_node -> data = key;
 	new_node -> next = NULL;
+	new_node -> dlm_block = new_block;
 	return new_node;
 }
 
+struct key_node* create_key_node_with_block(struct dlm_block* block)
+{
+	struct key_node* new_node =  kmalloc(sizeof(struct key_node), GFP_KERNEL);
+
+	char* key = block->name;
+	char* value = block->lksb->sb_lvbptr;
+
+	new_node -> data = create_key(key, value);
+	new_node -> next = NULL;
+	new_node -> dlm_block = block;
+	return new_node;
+}
 
 void delete_lock(struct lock* lock)
 {
@@ -72,6 +87,33 @@ struct lock* create_lock(struct key_value* key, char* owner)
 }
 
 
+struct dlm_block* create_dlm_block(char* key, char* value)
+{
+	struct dlm_lksb* new_lksb = kmalloc(sizeof(struct dlm_lksb), GFP_KERNEL);
+	new_lksb->sb_status = 0;
+	new_lksb->sb_lkid = 0;
+	new_lksb->sb_lvbptr = value;
+	struct dlm_block* new_block = kmalloc(sizeof(struct dlm_block), GFP_KERNEL);
+	new_block->lvb  = value;
+	printk("kv structures : create_dlm_block: with name: %s", key);
+	new_block->name = key;
+	new_block->lksb = new_lksb;
+	new_block->lock_type = 0;
+
+	return new_block;
+}
+
+
+struct dlm_block* copy_block(struct dlm_block* block)
+{
+
+	char* newname = (char*) kmalloc(strlen(block->name) * sizeof(char), GFP_KERNEL);
+	char* newlvb  = (char*) kmalloc(strlen(block->lksb->sb_lvbptr) * sizeof(char), GFP_KERNEL);
+
+	strcpy(newname, block->name);
+	strcpy(newlvb, block->lksb->sb_lvbptr);
+	return create_dlm_block(newname, newlvb);
+}
 
 struct lock_node* create_lock_node(struct lock* lock)
 {

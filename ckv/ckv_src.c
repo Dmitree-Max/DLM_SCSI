@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 
 
+#include "../kv/kv.h"
 #include "commands.h"
 #include "../kv/buffer_interactions.h"
 
@@ -23,9 +24,6 @@ static dev_t first;       // Global variable for the first device number
 static struct cdev c_dev; // Global variable for the character device structure
 static struct class *cl;  // Global variable for the device class
 
-
-char device_buffer[BUFFER_SIZE];
-char temp_buffer[BUFFER_SIZE];
 
 
 static int device_open(struct inode *i, struct file *f)
@@ -119,7 +117,8 @@ static int __init ofcd_init(void) /* Constructor */
     return -1;
   }
   
-  add_test_data();
+  dlm_init();
+  //add_test_data();
   return 0;
 }
  
