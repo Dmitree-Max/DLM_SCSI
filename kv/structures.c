@@ -89,14 +89,25 @@ struct lock* create_lock(struct key_value* key, char* owner)
 
 struct dlm_block* create_dlm_block(char* key, char* value)
 {
-	struct dlm_lksb* new_lksb = kmalloc(sizeof(struct dlm_lksb), GFP_KERNEL);
+	struct dlm_lksb* new_lksb ;
+	char* newkey;
+	char* newvalue;
+	struct dlm_block* new_block;
+
+	new_lksb = kmalloc(sizeof(struct dlm_lksb), GFP_KERNEL);
+	newkey = (char*) kmalloc(strlen(key) * sizeof(char), GFP_KERNEL);
+	strcpy(newkey, key);
+
+	newvalue = (char*) kmalloc(strlen(value) * sizeof(char), GFP_KERNEL);
+	strcpy(newvalue, value);
+
 	new_lksb->sb_status = 0;
 	new_lksb->sb_lkid = 0;
-	new_lksb->sb_lvbptr = value;
-	struct dlm_block* new_block = kmalloc(sizeof(struct dlm_block), GFP_KERNEL);
-	new_block->lvb  = value;
+	new_lksb->sb_lvbptr = newvalue;
+	new_block = kmalloc(sizeof(struct dlm_block), GFP_KERNEL);
+	new_block->lvb  = newvalue;
 	printk("kv structures : create_dlm_block: with name: %s", key);
-	new_block->name = key;
+	new_block->name = newkey;
 	new_block->lksb = new_lksb;
 	new_block->lock_type = 0;
 
@@ -106,13 +117,32 @@ struct dlm_block* create_dlm_block(char* key, char* value)
 
 struct dlm_block* copy_block(struct dlm_block* block)
 {
+	char* key;
+	struct dlm_lksb* new_lksb;
+	char* newkey;
+	char* newvalue;
+	struct dlm_block* new_block;
 
-	char* newname = (char*) kmalloc(strlen(block->name) * sizeof(char), GFP_KERNEL);
-	char* newlvb  = (char*) kmalloc(strlen(block->lksb->sb_lvbptr) * sizeof(char), GFP_KERNEL);
+	key = block->name;
+	new_lksb = kmalloc(sizeof(struct dlm_lksb), GFP_KERNEL);
+	newkey = (char*) kmalloc(strlen(block->name) * sizeof(char), GFP_KERNEL);
+	strcpy(newkey, block->name);
 
-	strcpy(newname, block->name);
-	strcpy(newlvb, block->lksb->sb_lvbptr);
-	return create_dlm_block(newname, newlvb);
+	newvalue = (char*) kmalloc(strlen(block->lksb->sb_lvbptr) * sizeof(char), GFP_KERNEL);
+	strcpy(newvalue, block->lksb->sb_lvbptr);
+
+	new_lksb->sb_status = block->lksb->sb_status;
+	new_lksb->sb_lkid = block->lksb->sb_lkid;
+	new_lksb->sb_lvbptr = newvalue;
+	new_lksb->sb_flags = 0;
+	new_block = kmalloc(sizeof(struct dlm_block), GFP_KERNEL);
+	new_block->lvb  = newvalue;
+	printk("kv structures : copy_block: with name: %s", block->name);
+	new_block->name = newkey;
+	new_block->lksb = new_lksb;
+	new_block->lock_type = 0;
+
+	return new_block;
 }
 
 struct lock_node* create_lock_node(struct lock* lock)
@@ -122,6 +152,26 @@ struct lock_node* create_lock_node(struct lock* lock)
 	new_node -> next = NULL;
 	return new_node;
 }
+
+struct update_structure* create_update_structure(char* key, char* value, char type)
+{
+	struct update_structure* res =  kmalloc(sizeof(struct update_structure), GFP_KERNEL);
+	res->key = key;
+	res->value = value;
+	res->type = type;
+
+	return res;
+}
+
+struct update_with_target* create_update_target(struct update_structure* update, int target)
+{
+	struct update_with_target* res =  kmalloc(sizeof(struct update_with_target), GFP_KERNEL);
+	res->update = update;
+	res->target_id = target;
+
+	return res;
+}
+
 
 
 char* replace_char(char* str, char find, char replace){

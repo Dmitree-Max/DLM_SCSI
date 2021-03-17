@@ -13,15 +13,10 @@ int fill_buffer_with_keys(char* buffer, int length, int* offset)
 	char* separator = " = ";
 	char* data_value;
 	int max_bytes_to_copy, key_string_length;
-	int temp;
-	struct dlm_block* block_dlm;
 
     while (cur_node != NULL)
     {
-    	block_dlm = cur_node->dlm_block;
-    	temp = dlm_get_lkvb(block_dlm);
-    	printk("kv : temp = %i", temp);
-    	data_value = cur_node->data->value;
+    	data_value = cur_node->dlm_block->lksb->sb_lvbptr;
 
 		key_string_length = strlen(cur_node->data->key) + strlen(data_value) + strlen(separator) + 1; // 1 for \n
 		if (offset_controller + key_string_length > *offset)
@@ -171,3 +166,44 @@ int write_header(char* buffer, int length, int *offset, char* header)
     *offset = max(*offset, 0);
 	return bytes_written;
 }
+
+
+void update_to_buffer(struct update_structure* update, char* buffer)
+{
+	char key_length;
+	char value_length;
+
+	key_length   = strlen(update->key);
+	value_length = strlen(update->value);
+
+	memcpy(buffer    , (void *) &update->type   , 1);
+	memcpy(buffer + 1, (void *) &key_length     , 1);
+	memcpy(buffer + 2, (void *) &value_length   , 1);
+
+	strcpy(buffer + 3             , update->key);
+	strcpy(buffer + 3 + key_length, update->value);
+}
+
+void update_from_buffer(struct update_structure* update, char* buffer)
+{
+	char key_length   = 'k';
+	char value_length = 'b';
+
+	memcpy(&update->type , buffer    , 1);
+	memcpy(&key_length   ,  buffer + 1, 1);
+	memcpy(&value_length ,  buffer + 2, 1);
+
+	printk("kv : update_from_buffer: klen: %c vlen: %c", key_length, value_length);
+
+	char* new_key   =  kmalloc(key_length, GFP_KERNEL);
+	char* new_value =  kmalloc(value_length, GFP_KERNEL);
+
+	memcpy(new_key  , buffer + 3, key_length);
+	strcpy(new_value, buffer + 3 + key_length);
+
+	update->key = new_key;
+	update->value = new_value;
+}
+
+
+

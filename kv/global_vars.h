@@ -2,11 +2,13 @@
 
 #define GLOBAL_VARS
 
+
 #define PR_DLM_LVB_LEN 256
 #define FLAG_NL 1
 #define FLAG_EX 6
 
 extern char* this_machine_id;
+extern int this_node_id;
 
 extern struct key_node* key_head;
 extern struct key_node* key_tail;
@@ -19,5 +21,6 @@ extern char temp_buffer[];
 
 extern int node_amount;
 extern char** node_list;
+extern struct dlm_block** sys_locks;
 
 #endif

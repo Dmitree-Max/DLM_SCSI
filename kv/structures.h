@@ -37,19 +37,26 @@ struct dlm_block
 	char* lvb;
 	char* name;
 	int lock_type; // 0 for no lock
-//	__u32 lock_id;
+
 };
 
 
 // this structure is used in bast to pass new block and id of node to update
-struct dlm_block_extended
+struct update_structure
 {
-	struct dlm_block* dlm_block;
-	char* node_id;
+	char type;
+	char* key;
+	char* value;
 };
 
-struct key_value* create_key(char* key, char* value);
+struct update_with_target
+{
+	struct update_structure* update;
+	int target_id;
+};
 
+
+struct key_value* create_key(char* key, char* value);
 struct key_node* create_key_node(struct key_value* key);
 struct key_node* create_key_node_with_block(struct dlm_block* block);
 struct lock_node* create_lock_node(struct lock* lock);
@@ -60,5 +67,6 @@ void remove_lock(struct lock* lock);
 struct lock* create_lock(struct key_value* key, char* owner);
 struct dlm_block* create_dlm_block(char* key, char* value);
 struct dlm_block* copy_block(struct dlm_block* block);
-
+struct update_structure* create_update_structure(char* key, char* value, char type);
+struct update_with_target* create_update_target(struct update_structure* update, int target);
 #endif

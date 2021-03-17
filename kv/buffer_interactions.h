@@ -18,4 +18,7 @@ int fill_buffer_with_locks(char* buffer, int length, int* offset);
 int send_buffer(char *buff, int bytes_to_send, loff_t *ppos);
 int write_header(char* buffer, int length, int *offset, char* header);
 
+void update_to_buffer(struct update_structure* update, char* buffer);
+void update_from_buffer(struct update_structure* update, char* buffer);
+
 #endif

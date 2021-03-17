@@ -19,13 +19,13 @@ struct key_value* find_key(char* key_name)
 
 struct dlm_block* get_block_by_name(char* name)
 {
-	printk("dlm : get_block_by_name: looking for: %s", name);
+//	printk("dlm : get_block_by_name: looking for: %s", name);
 	struct key_node* cur_node;
 
 	cur_node = key_head;
 	while (cur_node != NULL)
 	{
-		printk("dlm : get_block_by_name: have: %s", cur_node->dlm_block->name);
+//		printk("dlm : get_block_by_name: have: %s", cur_node->dlm_block->name);
 
 		if (strcmp(cur_node->dlm_block->name, name) == 0)
 		{
@@ -47,7 +47,7 @@ int update_or_add_dlm_block(struct dlm_block* block)
 	{
 		if (strcmp(cur_node->dlm_block->name, block->name) == 0)
 		{
-			cur_node->dlm_block = copy_block(block);
+			cur_node->dlm_block->lksb = block->lksb;
 			return 0;
 		}
 		cur_node = cur_node -> next;
@@ -60,8 +60,7 @@ int update_or_add_dlm_block(struct dlm_block* block)
 
 int insert_dlm_block(struct dlm_block* block)
 {
-	struct dlm_block* new_block = copy_block(block);
-	struct key_node* new_node = create_key_node_with_block(new_block);
+	struct key_node* new_node = create_key_node_with_block(block);
 	return insert_key_node(new_node);
 }
 
@@ -73,7 +72,9 @@ void print_all_blocks(void)
 	cur_node = key_head;
 	while (cur_node != NULL)
 	{
-		printk("dlm : print_all_blocks: name: %s", cur_node->dlm_block->name);
+		printk("dlm : print_all_blocks: name: %s, value: %s, lockid: %i",
+				cur_node->dlm_block->name, cur_node->dlm_block->lksb->sb_lvbptr,
+				cur_node->dlm_block->lksb->sb_lkid);
 		cur_node = cur_node -> next;
 	}
 
