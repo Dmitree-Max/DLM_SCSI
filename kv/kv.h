@@ -24,9 +24,10 @@
 #define POST_PREFIX "post_"
 
 
-int register_key(char *key, char* value);
+int add_key(char *key, char* value);
 int lock_key(char *key);
 int unlock_key(char *key);
+
 int get_values(char *device_buffer, size_t size_in_min_buffer_left, loff_t *ppos);
 int dlm_init(void);
 int dlm_get_lkvb(struct dlm_block* block);

@@ -47,7 +47,7 @@ int make_command(char* buff, int length)
 		    printk(KERN_INFO "charDev : key value is NULL\n");
 			return -1;
 		}
-		return register_key(key_name, key_value);
+		return add_key(key_name, key_value);
 	}
 	if (strcmp(command, "lock-key") == 0)
 	{

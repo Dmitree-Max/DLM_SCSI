@@ -14,7 +14,7 @@ struct key_value
 
 struct lock
 {
-    struct key_value* key;
+    char* key;
     char* owner;
 };
 
@@ -22,7 +22,6 @@ struct key_node
 {
     struct key_node* next;
     struct key_value* data;
-    struct dlm_block* dlm_block;
 };
 
 struct lock_node
@@ -58,13 +57,11 @@ struct update_with_target
 
 struct key_value* create_key(char* key, char* value);
 struct key_node* create_key_node(struct key_value* key);
-struct key_node* create_key_node_with_block(struct dlm_block* block);
 struct lock_node* create_lock_node(struct lock* lock);
 void delete_lock_node(struct lock_node* node);
-
 void delete_lock(struct lock* lock);
-void remove_lock(struct lock* lock);
-struct lock* create_lock(struct key_value* key, char* owner);
+struct lock* create_lock(char* key, char* owner);
+
 struct dlm_block* create_dlm_block(char* key, char* value);
 struct dlm_block* copy_block(struct dlm_block* block);
 struct update_structure* create_update_structure(char* key, char* value, char type);

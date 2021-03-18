@@ -16,7 +16,7 @@ int fill_buffer_with_keys(char* buffer, int length, int* offset)
 
     while (cur_node != NULL)
     {
-    	data_value = cur_node->dlm_block->lksb->sb_lvbptr;
+    	data_value = cur_node->data->value;
 
 		key_string_length = strlen(cur_node->data->key) + strlen(data_value) + strlen(separator) + 1; // 1 for \n
 		if (offset_controller + key_string_length > *offset)
@@ -79,11 +79,11 @@ int fill_buffer_with_locks(char* buffer, int length, int* offset)
 
     while (cur_node != NULL)
     {
-		lock_string_length = strlen(cur_node->data->key->key) + strlen(cur_node->data->owner) +\
+		lock_string_length = strlen(cur_node->data->key) + strlen(cur_node->data->owner) +\
 				strlen(separator1) + strlen(separator2) + 1; // 1 for \n
 		if (offset_controller + lock_string_length > *offset)
 		{
-			strcpy(temp_buffer, cur_node->data->key->key);
+			strcpy(temp_buffer, cur_node->data->key);
 			strcat(temp_buffer, separator1);
 			strcat(temp_buffer, cur_node->data->owner);
 			strcat(temp_buffer, separator2);

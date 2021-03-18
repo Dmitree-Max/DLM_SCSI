@@ -92,56 +92,6 @@ int get_values(char *buff, size_t length, loff_t *ppos)
 
 
 
-int lock_key(char* key_name)
-{
-	struct key_value* key;
-	if (is_there_lock(key_name))
-	{
-	    printk(KERN_INFO "charDev : try to lock locked key: %s\n", key_name);
-		return -1;
-	}
-	else
-	{
-		key = find_key(key_name);
-		if (key == NULL)
-		{
-		    printk(KERN_INFO "charDev : there is no such key: %s\n", key_name);
-			return -1;
-		}
-		else
-		{
-		    insert_lock(create_lock(key, this_machine_id));
-		    return 0;
-		}
-	}
-}
-
-
-
-
-int unlock_key(char* key_name)
-{
-	struct lock* lock;
-	lock = find_lock(key_name);
-	if (lock == NULL)
-	{
-	    printk(KERN_INFO "charDev : there is no such lock: %s\n", key_name);
-		return -1;
-	}
-	else
-	{
-		if (strcmp(lock->owner, this_machine_id) != 0)
-		{
-		    printk(KERN_INFO "charDev : %s tries to unlock %s, which owned by %s\n", this_machine_id, key_name, lock->owner);
-			return -1;
-		}
-		else
-		{
-		    remove_lock(lock);
-		    return 0;
-		}
-	}
-}
 
 
 
@@ -149,7 +99,7 @@ int unlock_key(char* key_name)
 static int init_ls(void)
 {
 	int status;
-	status = dlm_new_lockspace("new_ls127", "mycluster", DLM_LSFL_NEWEXCL | DLM_LSFL_FS,
+	status = dlm_new_lockspace("new_ls128", "mycluster", DLM_LSFL_NEWEXCL | DLM_LSFL_FS,
 		      PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
 	printk("kv : ls_create_status = %i", status);
 	return status;
@@ -157,29 +107,72 @@ static int init_ls(void)
 }
 
 
+static int process_update(struct update_structure update)
+{
+	int error ;
+
+	printk("kv : process_update_ast : update type %i, key: %s, value: %s",
+			update.type, update.key, update.value);
+
+	switch (update.type)
+	{
+		case 1:
+			error =	update_or_add_key(update.key, update.value);
+			printk("kv : process_update_ast: ins or up %s = %s", update.key, update.value);
+			break;
+		case 3:
+			error =	insert_lock(create_lock(update.key, this_machine_id));
+			printk("kv : process_update_ast: locked %s ", update.key);
+			break;
+		case 4:
+			error =	remove_lock(update.key);
+			printk("kv : process_update_ast: locked %s ", update.key);
+			break;
+	}
+
+	if (error) {
+		printk("kv : process_update: update fail: type: %i error: %i", update.type, error);
+	}
+
+	return error;
+}
+
+
 static void process_update_ast(void* value)
 {
-	print_all_sys_blocks();
 	struct dlm_block* block = (struct dlm_block*) value;
-
 	struct dlm_block* post_block = get_post_block(this_node_id);
+	struct update_structure update;
 
-//	struct update_structure update;
-//	struct dlm_block* new_block;
 	int error = 0;
-//
-//	update_from_buffer(&update, block->lksb->sb_lvbptr);
-//
-//	printk("kv : process_update_ast : update type %i, key: %s, value: %s",
-//			update.type, update.key, update.value);
 
-//	if (update.type == 1)
-//	{
-//		new_block = create_dlm_block(update.key, update.value);
-//		error =	update_or_add_dlm_block(new_block);
-//		printk("kv : process_update_ast: ins or up %s = %s", update.key, update.value);
-//	}
-//
+	print_all_sys_blocks();
+
+	update_from_buffer(&update, block->lksb->sb_lvbptr);
+
+	printk("kv : process_update_ast : update type %i, key: %s, value: %s",
+			update.type, update.key, update.value);
+
+	switch (update.type)
+	{
+		case 1:
+			error =	update_or_add_key(update.key, update.value);
+			printk("kv : process_update_ast: ins or up %s = %s", update.key, update.value);
+			break;
+		case 3:
+			error =	insert_lock(create_lock(update.key, this_machine_id));
+			printk("kv : process_update_ast: locked %s ", update.key);
+			break;
+		case 4:
+			error =	remove_lock(update.key);
+			printk("kv : process_update_ast: locked %s ", update.key);
+			break;
+	}
+
+	if (error) {
+		printk("kv : process_update_ast: update fail: type: %i error: %i", update.type, error);
+		goto out;
+	}
 
 	error = dlm_lock(ls, DLM_LOCK_NL, post_block->lksb, DLM_LKF_CONVERT,
 				     post_block->name, strlen(post_block->name),  0,
@@ -209,10 +202,10 @@ static void process_update_ast(void* value)
 
 static void post_data_getter_bast(void* arg, int mode)
 {
-	print_all_sys_blocks();
 	int error;
-
 	struct dlm_block* pre_block  = get_pre_block(this_node_id);
+
+	print_all_sys_blocks();
 
 	print_lksb(pre_block->lksb);
 
@@ -235,9 +228,10 @@ out:
 
 static void pre_step_two_ast(void* arg)
 {
-	print_all_sys_blocks();
 	int error;
 	struct dlm_block* pre_block = get_pre_block(this_node_id);
+
+	print_all_sys_blocks();
 
 	error = dlm_lock(ls, DLM_LOCK_NL, pre_block->lksb, DLM_LKF_CONVERT,
 				     pre_block->name, strlen(pre_block->name),  0,
@@ -255,9 +249,10 @@ static void pre_step_two_ast(void* arg)
 
 static void pre_bast_initial(void* arg, int mode)
 {
-	print_all_sys_blocks();
 	int error;
 	struct dlm_block* post_block = get_post_block(this_node_id);
+
+	print_all_sys_blocks();
 
 	printk("kv : pre_bast_initial: post block name: %s", post_block->name);
 	error = dlm_lock(ls, DLM_LOCK_EX, post_block->lksb, DLM_LKF_CONVERT,
@@ -392,9 +387,8 @@ out:
 
 static void print_astarg(void* value)
 {
-	print_all_sys_blocks();
 	struct dlm_block* block = (struct dlm_block*) value;
-	print_lksb(block->lksb);
+
 	printk("kv : print_astarg: status = %i, lockid: %d",
 			block->lksb->sb_status, block->lksb->sb_lkid);
 }
@@ -431,11 +425,12 @@ static void to_nl_ast(void* value)
 
 static void dlm_updater_second_ast(void* arg)
 {
-	print_all_sys_blocks();
 	int error;
 	struct update_with_target* target_update = (struct update_with_target*) arg;
 	struct dlm_block* post_block;
 	struct update_structure* update;
+
+	print_all_sys_blocks();
 
 	update = target_update->update;
 	post_block = get_post_block(target_update->target_id);
@@ -459,7 +454,6 @@ static void dlm_updater_ast(void* arg)
 	struct update_with_target* target_update = (struct update_with_target*) arg;
 	struct dlm_block* pre_block;
 	struct update_structure* update;
-
 
 	update = target_update->update;
 	pre_block = get_pre_block(target_update->target_id);
@@ -507,15 +501,13 @@ static int dlm_update_all_nodes(struct update_structure* update)
 {
 	int node_id;
 	int error;
-	struct dlm_block* new_block;
 
 	node_id = 0;
 	while (node_id < node_amount)
 	{
 		if (this_node_id == node_id)
 		{
-			new_block = create_dlm_block(update->key, update->value);
-			error =	update_or_add_dlm_block(new_block);
+			error = process_update(*update);
 		}
 		else
 		{
@@ -538,7 +530,7 @@ out:
 
 
 
-int register_key(char *key, char* value)
+int add_key(char *key, char* value)
 {
 	struct update_structure* update = create_update_structure(key, value, 1);
 	int status;
@@ -558,7 +550,7 @@ int register_key(char *key, char* value)
 	}
 
 
-	printk("kv : register_key : 1");
+	printk("kv : register_key; %s = %s", key, value);
 	status  = dlm_update_all_nodes(update);
 
 	if ( status < 0)
@@ -569,3 +561,70 @@ int register_key(char *key, char* value)
 }
 
 
+int lock_key(char* key_name)
+{
+	char* value = "\0";
+	struct update_structure* update = create_update_structure(key_name, value, 3);
+	int status;
+
+	if (is_there_lock(key_name))
+	{
+	    printk(KERN_INFO "charDev : try to lock locked key: %s\n", key_name);
+		return -1;
+	}
+	else
+	{
+		if (is_there_such_key(key_name))
+		{
+		    printk(KERN_INFO "charDev : there is no such key: %s\n", key_name);
+			return -1;
+		}
+		else
+		{
+			printk("kv : lock_key: %s", key_name);
+			status  = dlm_update_all_nodes(update);
+			if ( status < 0)
+			{
+				printk( "dlmlock : lock error, status: %i", status);
+			}
+		    return status;
+		}
+	}
+}
+
+
+
+
+int unlock_key(char* key_name)
+{
+	struct lock* lock;
+	lock = find_lock(key_name);
+	if (lock == NULL)
+	{
+	    printk(KERN_INFO "charDev : there is no such lock: %s\n", key_name);
+		return -1;
+	}
+	else
+	{
+		if (strcmp(lock->owner, this_machine_id) != 0)
+		{
+		    printk(KERN_INFO "charDev : %s tries to unlock %s, which owned by %s\n", this_machine_id, key_name, lock->owner);
+			return -1;
+		}
+		else
+		{
+			char* value = "\0";
+			struct update_structure* update = create_update_structure(key_name, value, 4);
+			int status;
+
+			printk("kv : unlock_key: %s", key_name);
+			status  = dlm_update_all_nodes(update);
+
+			if ( status < 0)
+			{
+				printk( "dlmlock : lock error, status: %i", status);
+			}
+			return status;
+		}
+	}
+}
