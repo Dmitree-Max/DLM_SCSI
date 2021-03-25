@@ -1,7 +1,5 @@
 #include "commands.h"
 
-int init_flag = false;
-
 
 int make_command(char* buff, int length)
 {
@@ -9,39 +7,31 @@ int make_command(char* buff, int length)
 	char* key_name;
 	char* key_value;
 	char* next = NULL;
-	char* str = NULL;
     int length_left;
 
-	if (init_flag)
-	{
-		dlm_init();
-		init_flag = false;
-	}
 
-
-    str = buff;
     length_left = length;
 
-	command = split(str, " ", &next, length_left);
+	command = split(buff, " ", &next, length_left);
 	if (command == NULL)
 	{
 	    printk(KERN_INFO "charDev : no command %s\n", key_name);
 	    return -1;
 	}
-	length_left -= next - str;
-	str = next;
+	length_left -= next - buff;
+	buff = next;
     printk(KERN_INFO "charDev : command %s\n", command);
 	if (strcmp(command, "add-key") == 0)
 	{
-		key_name = split(str, " ", &next, length_left);
+		key_name = split(buff, " ", &next, length_left);
 		if (key_name == NULL)
 		{
 		    printk(KERN_INFO "charDev : key name is NULL\n");
 			return -1;
 		}
-		length_left -= next - str;
-		str = next;
-		key_value = split(str, " ", &next, length_left);
+		length_left -= next - buff;
+		buff = next;
+		key_value = split(buff, " ", &next, length_left);
 		if (key_value == NULL)
 		{
 		    printk(KERN_INFO "charDev : key value is NULL\n");
@@ -51,7 +41,7 @@ int make_command(char* buff, int length)
 	}
 	if (strcmp(command, "lock-key") == 0)
 	{
-		key_name = split(str, " ", &next, length_left);
+		key_name = split(buff, " ", &next, length_left);
 		if (key_name == NULL)
 		{
 		    printk(KERN_INFO "charDev : key name is NULL\n");
@@ -61,7 +51,7 @@ int make_command(char* buff, int length)
 	}
 	if (strcmp(command, "unlock-key") == 0)
 	{
-		key_name = split(str, " ", &next, length_left);
+		key_name = split(buff, " ", &next, length_left);
 		if (key_name == NULL)
 		{
 		    printk(KERN_INFO "charDev : key name is NULL\n");

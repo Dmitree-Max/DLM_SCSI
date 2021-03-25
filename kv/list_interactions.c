@@ -1,7 +1,22 @@
 #include "list_interactions.h"
 
 
-struct key_value* find_key(char* key_name)
+
+static int insert_key_node(struct key_node* new_node)
+{
+    if (key_tail != NULL)
+    {
+       key_tail->next = new_node;
+    }
+    if (key_head == NULL)
+    {
+       key_head = new_node;
+    }
+    key_tail = new_node;
+    return 0;
+}
+
+struct key_value* find_key(const char* key_name)
 {
 	struct key_node* cur_node;
 
@@ -17,7 +32,7 @@ struct key_value* find_key(char* key_name)
 	return NULL;
 }
 
-bool is_there_such_key(char* key_name)
+bool is_there_such_key(const char* key_name)
 {
 	struct key_node* cur_node;
 
@@ -35,7 +50,7 @@ bool is_there_such_key(char* key_name)
 
 
 
-int update_or_add_key(char* key, char* value)
+int update_or_add_key(const char* key, const char* value)
 {
 	struct key_node* cur_node;
 	int error;
@@ -78,7 +93,7 @@ void print_all_blocks(void)
 }
 
 
-struct key_node* find_key_node(char* key_name)
+struct key_node* find_key_node(const char* key_name)
 {
 	struct key_node* cur_node;
 
@@ -117,19 +132,6 @@ int insert_key(struct key_value* key)
     return 0;
 }
 
-int insert_key_node(struct key_node* new_node)
-{
-    if (key_tail != NULL)
-    {
-       key_tail->next = new_node;
-    }
-    if (key_head == NULL)
-    {
-       key_head = new_node;
-    }
-    key_tail = new_node;
-    return 0;
-}
 
 
 
@@ -149,7 +151,7 @@ int insert_lock(struct lock* lock)
 }
 
 
-int remove_lock(char* key)
+int remove_lock(const char* key)
 {
 	struct lock_node* temp;
 	struct lock_node* cur_node;
@@ -184,7 +186,7 @@ int remove_lock(char* key)
 }
 
 
-bool is_there_lock(char* key_name)
+bool is_there_lock(const char* key_name)
 {
 	struct lock_node* cur_node = lock_head;
 	while (cur_node != NULL)
@@ -198,7 +200,7 @@ bool is_there_lock(char* key_name)
 	return false;
 }
 
-struct lock* find_lock(char* key_name)
+struct lock* find_lock(const char* key_name)
 {
 	struct lock_node* cur_node = lock_head;
 	while (cur_node != NULL)

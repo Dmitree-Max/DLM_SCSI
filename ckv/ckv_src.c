@@ -11,7 +11,6 @@
 
 #include "../kv/kv.h"
 #include "commands.h"
-#include "../kv/buffer_interactions.h"
 
 #define BUFFER_SIZE 1024
 

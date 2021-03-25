@@ -1,10 +1,6 @@
 #include "buffer_interactions.h"
 
 
-
-// buffer to write result (device_buffer)
-// length (bytes function can write in buffer)
-// offset bytes to skip
 int fill_buffer_with_keys(char* buffer, int length, int* offset)
 {
     int offset_controller = 0;
@@ -140,10 +136,10 @@ int send_buffer(char *buff, int bytes_to_send, loff_t *ppos)
 // length (bytes function can write in buffer)
 // offset bytes to skip
 // header -- string to write
-int write_header(char* buffer, int length, int *offset, char* header)
+int write_header(char* buffer, int length, int *offset, const char* header)
 {
 	int bytes_written = 0;
-	char* symbol = header;
+	const char* symbol = header;
 	int offset_controller = 0;
 	int buffer_place = 0;
 
@@ -168,7 +164,7 @@ int write_header(char* buffer, int length, int *offset, char* header)
 }
 
 
-void update_to_buffer(struct update_structure* update, char* buffer)
+void update_to_buffer(const struct update_structure* update, char* buffer)
 {
 	char key_length;
 	char value_length;
@@ -184,10 +180,12 @@ void update_to_buffer(struct update_structure* update, char* buffer)
 	strcpy(buffer + 3 + key_length, update->value);
 }
 
-void update_from_buffer(struct update_structure* update, char* buffer)
+void update_from_buffer(struct update_structure* update, const char* buffer)
 {
 	char key_length   = 'k';
 	char value_length = 'b';
+	char* new_key;
+	char* new_value;
 
 	memcpy(&update->type , buffer    , 1);
 	memcpy(&key_length   ,  buffer + 1, 1);
@@ -195,8 +193,8 @@ void update_from_buffer(struct update_structure* update, char* buffer)
 
 	printk("kv : update_from_buffer: klen: %c vlen: %c", key_length, value_length);
 
-	char* new_key   =  kmalloc(key_length, GFP_KERNEL);
-	char* new_value =  kmalloc(value_length, GFP_KERNEL);
+	new_key   =  kmalloc(key_length, GFP_KERNEL);
+	new_value =  kmalloc(value_length, GFP_KERNEL);
 
 	memcpy(new_key  , buffer + 3, key_length);
 	strcpy(new_value, buffer + 3 + key_length);
