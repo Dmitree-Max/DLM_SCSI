@@ -14,6 +14,8 @@ struct lock_node* lock_head = NULL;
 struct lock_node* lock_tail = NULL;
 
 
+struct workqueue_struct* workqueue = NULL;
+
 int status;
 dlm_lockspace_t *ls = NULL;
 
@@ -26,11 +28,51 @@ int this_node_id;
 struct dlm_block** sys_locks;
 
 
+struct work_struct first_bast;
+struct work_struct second_bast;
+
+
 static void print_ast(void* value);
 static void print_astarg_key_value(void* value);
 static struct dlm_block* get_pre_block(int node_id);
 static struct dlm_block* get_post_block(int node_id);
 static void pre_bast_initial(void* arg, int mode);
+
+
+
+static void dlm_wait_ast(void *astarg)
+{
+	struct dlm_block *dlm_block = astarg;
+
+	complete(dlm_block->compl);
+}
+
+
+static int sync_dlm_lock(int mode,
+	      struct dlm_block *block, int flags,
+	      const char *name, void (*bast)(void *, int))
+{
+	int res;
+
+	init_completion(block->compl);
+
+	res = dlm_lock(ls, mode, block->lksb, flags,
+			    (void *)name, name ? strlen(name) : 0, 0,
+			    dlm_wait_ast, block, bast);
+	if (res < 0)
+	    printk("kv : sync_dlm_lock : Locking error: %i name: %s\n", res, name);
+
+	res = wait_for_completion_timeout(block->compl, 60 * HZ);
+	if (res > 0)
+		res = block->lksb->sb_status;
+	else if (res == 0)
+		res = -ETIMEDOUT;
+	if (res < 0) {
+	    printk("kv : sync_dlm_lock : Locking error: %i name: %s\n", res, name);
+	}
+
+	return res;
+}
 
 
 static void print_lksb(struct dlm_lksb* lksb)
@@ -96,7 +138,7 @@ int get_values(char *buff, size_t length, loff_t *ppos)
 static int init_ls(void)
 {
 	int status;
-	status = dlm_new_lockspace("new_ls165", "mycluster", DLM_LSFL_FS,
+	status = dlm_new_lockspace("new_ls170", "mycluster", DLM_LSFL_FS,
 		      PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
 
 	printk("kv : init_ls: sleeping for 3 sec\n");
@@ -139,68 +181,66 @@ static int process_update(struct update_structure update)
 	return error;
 }
 
-
-static void process_update_ast(void* value)
+static void post_data_getter_bast(void* arg, int mode)
 {
+	printk("kv : post_data_getter_bast: start work %i\n");
+	queue_work(workqueue, &second_bast);
+}
 
 
-	struct dlm_block* block = (struct dlm_block*) value;
-	struct dlm_block* post_block = get_post_block(this_node_id);
+static void post_data_getter_work(struct work_struct *work)
+{
 	struct update_structure update;
 
 	int error = 0;
 
-	print_all_sys_blocks();
-	printk("kv : process_update_ast : buffer: %s\n", block->lksb->sb_lvbptr);
+	struct dlm_block* post_block = get_post_block(this_node_id);
+	struct dlm_block* pre_block  = get_pre_block(this_node_id);
 
-	update_from_buffer(&update, block->lksb->sb_lvbptr);
 
-	printk("kv : process_update_ast : update type %i, key: %s, value: %s\n",
+	error = sync_dlm_lock(DLM_LOCK_EX, pre_block, DLM_LKF_CONVERT | DLM_LKF_VALBLK,
+			pre_block->name, pre_bast_initial);
+
+
+	if (error) {
+		printk("kv : post_data_getter_work: pre convert failed: %i\n",  error);
+		goto out;
+	}
+
+	printk("kv : post_data_getter_work: pre convert suc\n");
+
+	printk("kv : post_data_getter_work : buffer: %s\n", pre_block->lksb->sb_lvbptr);
+
+	update_from_buffer(&update, pre_block->lksb->sb_lvbptr);
+
+	printk("kv : post_data_getter_work : update type %i, key: %s, value: %s\n",
 			update.type, update.key, update.value);
 
-	switch (update.type)
-	{
-		case 1:
-			error =	update_or_add_key(update.key, update.value);
-			printk("kv : process_update_ast: ins or up %s = %s\n", update.key, update.value);
-			break;
-		case 3:
-			error =	insert_lock(create_lock(update.key, this_machine_id));
-			printk("kv : process_update_ast: locked %s\n", update.key);
-			break;
-		case 4:
-			error =	remove_lock(update.key);
-			printk("kv : process_update_ast: locked %s\n", update.key);
-			break;
-	}
-
-	if (error) {
-		printk("kv : process_update_ast: update fail: type: %i error: %i\n", update.type, error);
-		goto out;
-	}
-
-	msleep(1000);
-
-	error = dlm_lock(ls, DLM_LOCK_NL, post_block->lksb, DLM_LKF_CONVERT,
-				     post_block->name, strlen(post_block->name),  0,
-					 print_astarg, post_block, NULL);
-
-	msleep(1000);
-
-	if (error) {
-		printk("kv : process_update_ast: post convert failed: %i\n",  error);
-		goto out;
-	}
-
-	printk("kv : process_update_ast: post convert suc\n");
+	error = process_update(update);
 
 	if (error != 0)
 	{
-		printk("kv : process_update_ast : error: %i\n", error);
+		printk("kv : post_data_getter_work : process update error: %i\n", error);
+	}
+
+	error = sync_dlm_lock(DLM_LOCK_NL, post_block, DLM_LKF_CONVERT,
+				post_block->name, NULL);
+
+
+	if (error) {
+		printk("kv : post_data_getter_work: post convert failed: %i\n",  error);
+		goto out;
+	}
+
+	printk("kv : post_data_getter_work: post convert suc\n");
+
+	if (error != 0)
+	{
+		printk("kv : post_data_getter_work : error: %i\n", error);
 	}
 	else
 	{
-		printk("kv : process_update_ast : suc\n");
+		printk("kv : post_data_getter_work : suc\n");
 	}
 
 	out:
@@ -208,75 +248,51 @@ static void process_update_ast(void* value)
 }
 
 
-static void post_data_getter_bast(void* arg, int mode)
+static void pre_bast_initial(void* arg, int mode)
 {
-	int error;
-	struct dlm_block* pre_block  = get_pre_block(this_node_id);
-
-	error = dlm_lock(ls, DLM_LOCK_EX, pre_block->lksb, DLM_LKF_CONVERT | DLM_LKF_VALBLK,
-				     pre_block->name, strlen(pre_block->name),  0,
-					 process_update_ast, pre_block, pre_bast_initial);
-
-	if (error) {
-		printk("kv : post_data_getter_bast: pre convert failed: %i\n",  error);
-		goto out;
-	}
-
-	printk("kv : post_data_getter_bast: pre convert suc\n");
-
-out:
-	return;
+	queue_work(workqueue, &first_bast);
 }
 
-
-
-static void pre_step_two_ast(void* arg)
+static void pre_bast_initial_work(struct work_struct *work)
 {
 	int error;
-	struct dlm_block* pre_block = get_pre_block(this_node_id);
+	struct dlm_block* pre_block;
+	struct dlm_block* post_block = get_post_block(this_node_id);
 
-	printk("kv : pre_bast_initial: pre block name: %s id: %i\n",
+
+	printk("kv : pre_bast_initial_work: post block name: %s id: %i\n",
+			post_block->name, post_block->lksb->sb_lkid);
+
+
+	error = sync_dlm_lock(DLM_LOCK_EX, post_block, DLM_LKF_CONVERT,
+				post_block->name, post_data_getter_bast);
+
+	if (error) {
+		printk("kv : pre_bast_initial_work: post convert failed: %i\n",  error);
+		goto out;
+	}
+	else {
+		printk("kv : pre_bast_initial_work: post convert succeed\n");
+	}
+
+
+	pre_block = get_pre_block(this_node_id);
+
+	printk("kv : pre_bast_initial_work: pre block name: %s id: %i\n",
 			pre_block->name, pre_block->lksb->sb_lkid);
 
-	msleep(1000);
-	error = dlm_lock(ls, DLM_LOCK_NL, pre_block->lksb, DLM_LKF_CONVERT,
-				     pre_block->name, strlen(pre_block->name),  0,
-					 print_astarg, pre_block, NULL);
 
-	msleep(1000);
+	error = sync_dlm_lock(DLM_LOCK_NL, pre_block, DLM_LKF_CONVERT,
+			pre_block->name, NULL);
 
 
 	if (error) {
-		printk("kv : pre_step_two_ast: pre convert failed: %i\n",  error);
+		printk("kv : pre_bast_initial_work: pre convert failed: %i\n",  error);
 	}
 	else
 	{
-		printk("kv : pre_step_two_ast: pre convert succeed\n");
+		printk("kv : pre_bast_initial_work: pre convert succeed\n");
 	}
-}
-
-
-static void pre_bast_initial(void* arg, int mode)
-{
-	int error;
-	struct dlm_block* post_block = get_post_block(this_node_id);
-
-	print_all_sys_blocks();
-
-	printk("kv : pre_bast_initial: post block name: %s id: %i\n",
-			post_block->name, post_block->lksb->sb_lkid);
-
-	error = dlm_lock(ls, DLM_LOCK_EX, post_block->lksb, DLM_LKF_CONVERT,
-				     post_block->name, strlen(post_block->name),  0,
-					 pre_step_two_ast, post_block, post_data_getter_bast);
-
-
-	if (error) {
-		printk("kv : pre_bast_initial: post convert failed: %i\n",  error);
-		goto out;
-	}
-
-	printk("kv : pre_bast_initial: post convert succeed\n");
 
 out:
 	return;
@@ -332,6 +348,12 @@ int dlm_init(void)
 		goto out;
 	}
 
+
+	INIT_WORK(&first_bast, pre_bast_initial_work);
+	INIT_WORK(&second_bast, post_data_getter_work);
+
+	workqueue = create_singlethread_workqueue("dlm");
+
 	i = 0;
 	while (i < node_amount)
 	{
@@ -361,16 +383,14 @@ int dlm_init(void)
 		{
 			this_node_id = i;
 			printk("kv : dlm_init : init my node locks\n");
-			error = dlm_lock(ls, DLM_LOCK_EX, pre_block->lksb, 0,
-							pre_name_temp_buffer, strlen(pre_name_temp_buffer),  0,
-							print_astarg, pre_block, pre_bast_initial);
+			error = sync_dlm_lock(DLM_LOCK_EX, pre_block, 0,
+					pre_block->name, pre_bast_initial);
 		}
 		else
 		{
 			printk("kv : dlm_init : init %s`s locks\n", node_id);
-			error = dlm_lock(ls, DLM_LOCK_NL, pre_block->lksb, 0,
-							pre_name_temp_buffer, strlen(pre_name_temp_buffer),  0,
-							print_astarg, pre_block, NULL);
+			error = sync_dlm_lock(DLM_LOCK_NL, pre_block, 0,
+					pre_block->name, NULL);
 		}
 
 		if (error != 0)
@@ -380,11 +400,9 @@ int dlm_init(void)
 		}
 
 		printk("kv : dlm_init : get post lock with name: %s\n", post_name_temp_buffer);
-		error = dlm_lock(ls, DLM_LOCK_NL, post_block->lksb, 0,
-						post_name_temp_buffer, strlen(post_name_temp_buffer),  0,
-						print_ast, post_block, NULL);
 
-
+		error = sync_dlm_lock(DLM_LOCK_NL, post_block, 0,
+				post_block->name, NULL);
 		i++;
 	}
 
@@ -404,90 +422,12 @@ static void print_ast(void* value)
 			block->lksb->sb_status, block->lksb->sb_lkid);
 }
 
-static void print_astarg_key_value(void* value)
-{
-	struct dlm_block* block = (struct dlm_block*) value;
-    print_all_blocks();
-
-	printk("kv : print_astarg_key_value: status = %i, lockid: %d key: %s value: %s\n",
-			block->lksb->sb_status, block->lksb->sb_lkid, block->name, block->lksb->sb_lvbptr);
-}
-
-static void to_nl_ast(void* value)
-{
-	int res;
-	struct dlm_block* block = (struct dlm_block*) value;
-
-	printk("kv : to_nl_ast: status = %i\n", block->lksb->sb_status);
-
-	res = dlm_lock(ls, DLM_LOCK_NL, block->lksb, DLM_LKF_CONVERT,
-			block->name, strlen(block->name), 0,
-					print_ast, block, NULL);
-
-	if (res != 0)
-	{
-		printk("kv : to_nl_ast: NL: FAIL! dlm_lock_res = %i\n", res);
-	}
-	else
-	{
-		printk("kv : to_nl_ast:  %s\n", block->name);
-	}
-}
-
-static void dlm_updater_second_ast(void* arg)
-{
-	int error;
-	struct update_with_target* target_update = (struct update_with_target*) arg;
-	struct dlm_block* post_block;
-	struct update_structure* update;
-
-	print_all_sys_blocks();
-
-	update = target_update->update;
-	post_block = get_post_block(target_update->target_id);
-
-	printk("kv : dlm_updater_second_ast post: publish key: %s, value: %s\n",
-			update->key, update->value);
-
-	printk("kv : dlm_updater_second_ast post: block name: %s\n",
-			post_block->name);
-
-	error = dlm_lock(ls, DLM_LOCK_EX, post_block->lksb, DLM_LKF_CONVERT,
-					 post_block->name, strlen(post_block->name), 0,
-					 to_nl_ast,  post_block, NULL);
-
-	printk("kv : dlm_updater_second_ast post error = %i\n", error);
-
-}
-
-static void dlm_updater_ast(void* arg)
-{
-	int error;
-	struct update_with_target* target_update = (struct update_with_target*) arg;
-	struct dlm_block* pre_block;
-	struct update_structure* update;
-
-	update = target_update->update;
-	pre_block = get_pre_block(target_update->target_id);
-
-	update_to_buffer(update, pre_block->lksb->sb_lvbptr);
-
-	printk("kv : dlm_updater_ast: buffer: %s\n", pre_block->lksb->sb_lvbptr);
-
-	error = dlm_lock(ls, DLM_LOCK_NL, pre_block->lksb, DLM_LKF_CONVERT | DLM_LKF_VALBLK,
-					 pre_block->name, strlen(pre_block->name), 0,
-					 dlm_updater_second_ast, arg, NULL);
-
-	printk("kv : dlm_updater_ast pre error = %i\n", error);
-
-}
-
 
 static int dlm_update_block_on_the_remote_node(struct update_structure* update, int node_id)
 {
 	struct dlm_block* pre_block;
+	struct dlm_block* post_block;
 	int error;
-	struct update_with_target* target_update;
 
 
 	pre_block = get_pre_block(node_id);
@@ -498,19 +438,58 @@ static int dlm_update_block_on_the_remote_node(struct update_structure* update, 
 		return -1;
 	}
 
-	target_update = create_update_target(update, node_id);
 
 	printk("kv : dlm_update_block_on_the_remote_node pre: block name: %s\n",
 			pre_block->name);
 
-	error = dlm_lock(ls, DLM_LOCK_EX, pre_block->lksb, DLM_LKF_CONVERT,
-					pre_block->name, strlen(pre_block->name), 0,
-					dlm_updater_ast, target_update, NULL);
+	error = sync_dlm_lock(DLM_LOCK_EX, pre_block, DLM_LKF_CONVERT,
+			pre_block->name, NULL);
 
-	printk("kv : dlm_update_block_on_the_remote_node error = %i\n", error);
+	if (error != 0)
+	{
+		printk("kv : dlm_update_block_on_the_remote_node1 error = %i\n", error);
+		goto out;
+	}
 
+
+	update_to_buffer(update, pre_block->lksb->sb_lvbptr);
+
+	printk("kv : dlm_update_block_on_the_remote_node: buffer: %s\n", pre_block->lksb->sb_lvbptr);
+
+	error = sync_dlm_lock(DLM_LOCK_NL, pre_block, DLM_LKF_CONVERT | DLM_LKF_VALBLK,
+			pre_block->name, NULL);
+
+	if (error != 0)
+	{
+		printk("kv : dlm_update_block_on_the_remote_node2 error = %i\n", error);
+		goto out;
+	}
+
+
+	post_block = get_post_block(node_id);
+	printk("kv : dlm_update_block_on_the_remote_node post: block name: %s\n",
+			post_block->name);
+
+	error = sync_dlm_lock(DLM_LOCK_EX, post_block, DLM_LKF_CONVERT,
+			post_block->name, NULL);
+
+	if (error != 0)
+	{
+		printk("kv : dlm_update_block_on_the_remote_node3 error = %i\n", error);
+		goto out;
+	}
+
+	error = sync_dlm_lock(DLM_LOCK_NL, post_block, DLM_LKF_CONVERT,
+			post_block->name, NULL);
+
+
+	if (error != 0)
+	{
+		printk("kv : dlm_update_block_on_the_remote_node4 error = %i\n", error);
+	}
+
+out:
 	return error;
-
 }
 
 

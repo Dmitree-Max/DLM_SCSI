@@ -12,6 +12,8 @@
 #include <linux/slab.h>
 #include <linux/dlm.h>
 #include <linux/delay.h>
+#include <linux/completion.h>
+#include <linux/workqueue.h>
 
 #include "global_vars.h"
 #include "structures.h"

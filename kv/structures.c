@@ -50,6 +50,7 @@ struct dlm_block* create_dlm_block(const char* key, const char* value)
 	char* newkey;
 	char* newvalue;
 	struct dlm_block* new_block;
+	struct completion* compl;
 
 	new_lksb = kmalloc(sizeof(struct dlm_lksb), GFP_KERNEL);
 	newkey = (char*) kmalloc(strlen(key) * sizeof(char), GFP_KERNEL);
@@ -57,6 +58,8 @@ struct dlm_block* create_dlm_block(const char* key, const char* value)
 
 	newvalue = (char*) kmalloc(strlen(value) * sizeof(char), GFP_KERNEL);
 	strcpy(newvalue, value);
+
+	compl = (struct completion*) kmalloc(sizeof(struct completion), GFP_KERNEL);
 
 	new_lksb->sb_status = 0;
 	new_lksb->sb_lkid = 0;
@@ -67,6 +70,7 @@ struct dlm_block* create_dlm_block(const char* key, const char* value)
 	new_block->name = newkey;
 	new_block->lksb = new_lksb;
 	new_block->lock_type = 0;
+	new_block->compl = compl;
 
 	return new_block;
 }

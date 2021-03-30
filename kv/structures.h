@@ -34,11 +34,13 @@ struct lock_node
 // lksb is lock status block, contains lvb
 // name is the name of lock resource
 // lock type is field, used to specify lock type in some cases
+// compl is structure to make locking synchronous
 struct dlm_block
 {
 	struct dlm_lksb* lksb;
 	char* name;
 	int lock_type; // 0 for no lock
+	struct completion *compl;
 
 };
 
