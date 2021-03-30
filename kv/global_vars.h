@@ -5,6 +5,7 @@
 #define PR_DLM_LVB_LEN 256
 #define FLAG_NL 1
 #define FLAG_EX 6
+#define KV_MAX_KEY_NAME_LENGTH 64
 
 extern char *this_machine_id;
 extern int this_node_id;

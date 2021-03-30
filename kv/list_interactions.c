@@ -55,7 +55,7 @@ int update_or_add_key(const char *key, const char *value)
 			new_value =
 			    (char *)kmalloc(strlen(value) * sizeof(char),
 					    GFP_KERNEL);
-			strcpy(new_value, value);
+			strncpy(new_value, value, KV_MAX_KEY_NAME_LENGTH);
 
 			cur_node->data->value = new_value;
 			return 0;

@@ -20,10 +20,14 @@
 #include "list_interactions.h"
 #include "buffer_interactions.h"
 
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
-#define KV_BUFFER_SIZE 1024
-#define KV_MAX_KEY_NAME_LENGTH 64
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#define KV_BUFFER_SIZE 1024
+
+#define MAX_NODE_NAME_LENGTH 20
 #define PRE_PREFIX "pre_"
 #define POST_PREFIX "post_"
 
