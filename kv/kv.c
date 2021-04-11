@@ -24,6 +24,7 @@ struct dlm_block **sys_locks;
 
 struct work_struct first_bast;
 struct work_struct second_bast;
+struct dlm_block *data_block;
 
 static void print_ast(void *value);
 static void print_astarg_key_value(void *value);
@@ -35,6 +36,11 @@ static void dlm_wait_ast(void *astarg)
 {
 	struct dlm_block *dlm_block = astarg;
 
+	if (!dlm_block->lksb->sb_status)
+	{
+		pr_info("kv : dlm_wait_ast : Locking error: %i name: %s\n",
+					dlm_block->lksb->sb_status, dlm_block->name);
+	}
 	complete(dlm_block->compl);
 }
 
@@ -131,7 +137,7 @@ int get_values(char *buff, size_t length, loff_t * ppos)
 static int init_ls(void)
 {
 	int status;
-	status = dlm_new_lockspace("new_ls175", "mycluster", DLM_LSFL_FS,
+	status = dlm_new_lockspace("new_ls186", "mycluster", DLM_LSFL_FS,
 				   PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
 
 	pr_info("kv : init_ls: ls_create_status = %i\n", status);
@@ -183,7 +189,7 @@ static void post_data_getter_work(struct work_struct *work)
 
 	int error = 0;
 
-	struct dlm_block *post_block = get_post_block(this_node_id);
+	struct dlm_block *post_block;
 	struct dlm_block *pre_block = get_pre_block(this_node_id);
 
 	if (pre_block == NULL) {
@@ -191,10 +197,11 @@ static void post_data_getter_work(struct work_struct *work)
 		goto out;
 	}
 
-	error =
-	    sync_dlm_lock(DLM_LOCK_EX, pre_block,
-			  DLM_LKF_CONVERT | DLM_LKF_VALBLK, pre_block->name,
+	error = sync_dlm_lock(DLM_LOCK_EX, pre_block,
+			  DLM_LKF_CONVERT, pre_block->name,
 			  pre_bast_initial);
+
+	pr_info("kv : post_data_getter_work: pre convert suc\n");
 
 	if (error) {
 		pr_info("kv : post_data_getter_work: pre convert failed: %i\n",
@@ -202,17 +209,25 @@ static void post_data_getter_work(struct work_struct *work)
 		goto out;
 	}
 
-	pr_info("kv : post_data_getter_work: pre convert suc\n");
+	error = sync_dlm_lock(DLM_LOCK_PW, data_block,
+			  DLM_LKF_CONVERT | DLM_LKF_VALBLK, data_block->name,
+			  NULL);
+
+	if (error) {
+		pr_info("kv : post_data_getter_work: first data block convert failed: %i\n",
+			error);
+		goto out;
+	}
 
 	pr_info("kv : post_data_getter_work : buffer: %s\n",
-		pre_block->lksb->sb_lvbptr);
+		data_block->lksb->sb_lvbptr);
 
-//      update_from_buffer(&update, pre_block->lksb->sb_lvbptr);
+    update_from_buffer(&update, data_block->lksb->sb_lvbptr);
 
-//      printk("kv : post_data_getter_work : update type %i, key: %s, value: %s\n",
-//                      update.type, update.key, update.value);
+    printk("kv : post_data_getter_work : update type %i, key: %s, value: %s\n",
+                      update.type, update.key, update.value);
 
-//      error = process_update(update);
+    error = process_update(update);
 
 	if (error) {
 		pr_info
@@ -220,10 +235,29 @@ static void post_data_getter_work(struct work_struct *work)
 		     error);
 	}
 
-	error = sync_dlm_lock(DLM_LOCK_NL, post_block, DLM_LKF_CONVERT,
-			      post_block->name, NULL);
+
+	error = sync_dlm_lock(DLM_LOCK_CR, data_block,
+			  DLM_LKF_CONVERT| DLM_LKF_VALBLK, data_block->name,
+			  NULL);
 
 	if (error) {
+		pr_info("kv : post_data_getter_work: second data block convert failed: %i\n",
+			error);
+		goto out;
+	}
+
+
+	post_block = get_post_block(this_node_id);
+
+	if (post_block == NULL) {
+		pr_info("kv : post_data_getter_work: post block not found\n");
+		goto out;
+	}
+
+	error = sync_dlm_lock(DLM_LOCK_NL, post_block, DLM_LKF_CONVERT,
+			      post_block->name, post_data_getter_bast);
+
+	if (error != 0){
 		pr_info("kv : post_data_getter_work: post convert failed: %i\n",
 			error);
 		goto out;
@@ -231,7 +265,7 @@ static void post_data_getter_work(struct work_struct *work)
 
 	pr_info("kv : post_data_getter_work: post convert suc\n");
 
-	if (error) {
+	if (error != 0) {
 		pr_info("kv : post_data_getter_work : error: %i\n", error);
 	} else {
 		pr_info("kv : post_data_getter_work : suc\n");
@@ -252,6 +286,12 @@ static void pre_bast_initial_work(struct work_struct *work)
 	struct dlm_block *pre_block;
 	struct dlm_block *post_block = get_post_block(this_node_id);
 
+
+	if (post_block == NULL) {
+		pr_info("kv : pre_bast_initial_work: post block not found\n");
+		goto out;
+	}
+
 	pr_info("kv : pre_bast_initial_work: post block name: %s id: %i\n",
 		post_block->name, post_block->lksb->sb_lkid);
 
@@ -267,6 +307,11 @@ static void pre_bast_initial_work(struct work_struct *work)
 	}
 
 	pre_block = get_pre_block(this_node_id);
+
+	if (pre_block == NULL) {
+		pr_info("kv : pre_bast_initial_work: pre block not found\n");
+		goto out;
+	}
 
 	pr_info("kv : pre_bast_initial_work: pre block name: %s id: %i\n",
 		pre_block->name, pre_block->lksb->sb_lkid);
@@ -391,8 +436,14 @@ int dlm_init(void)
 		pr_info("get post lock with name: %s\n", post_name);
 
 		error = sync_dlm_lock(DLM_LOCK_NL, post_block, 0,
-				      post_block->name, NULL);
+				      post_block->name, post_data_getter_bast);
 	}
+
+	data_block = create_dlm_block("data_block", this_machine_id);
+
+	pr_info("data block with name: %s\n", data_block->name);
+	error = sync_dlm_lock(DLM_LOCK_CR, data_block, DLM_LKF_VALBLK,
+			data_block->name, NULL);
 
 	print_all_sys_blocks();
 
@@ -428,7 +479,7 @@ static int dlm_update_block_on_the_remote_node(struct update_structure *update,
 	     pre_block->name);
 
 	error = sync_dlm_lock(DLM_LOCK_EX, pre_block, DLM_LKF_CONVERT,
-			      pre_block->name, NULL);
+			      pre_block->name, pre_bast_initial);
 
 	if (error != 0) {
 		pr_info
@@ -437,14 +488,9 @@ static int dlm_update_block_on_the_remote_node(struct update_structure *update,
 		goto out;
 	}
 
-	update_to_buffer(update, pre_block->lksb->sb_lvbptr);
 
-	pr_info("kv : dlm_update_block_on_the_remote_node: buffer: %s\n",
-		pre_block->lksb->sb_lvbptr);
-
-	error =
-	    sync_dlm_lock(DLM_LOCK_NL, pre_block,
-			  DLM_LKF_CONVERT | DLM_LKF_VALBLK, pre_block->name,
+	error = sync_dlm_lock(DLM_LOCK_NL, pre_block,
+			  DLM_LKF_CONVERT, pre_block->name,
 			  NULL);
 
 	if (error != 0) {
@@ -454,13 +500,41 @@ static int dlm_update_block_on_the_remote_node(struct update_structure *update,
 		goto out;
 	}
 
+	error =
+	    sync_dlm_lock(DLM_LOCK_PW, data_block,
+			  DLM_LKF_CONVERT | DLM_LKF_VALBLK, data_block->name,
+			  NULL);
+
+	if (error != 0) {
+		pr_info
+		    ("kv : dlm_update_block_on_the_remote_node data block 1 error = %i\n",
+		     error);
+		goto out;
+	}
+
+	update_to_buffer(update, data_block->lksb->sb_lvbptr);
+	pr_info("kv : dlm_update_block_on_the_remote_node: buffer: %s\n",
+			data_block->lksb->sb_lvbptr);
+
+	error =
+	    sync_dlm_lock(DLM_LOCK_CR, data_block,
+			  DLM_LKF_CONVERT | DLM_LKF_VALBLK, data_block->name,
+			  NULL);
+
+	if (error != 0) {
+		pr_info
+		    ("kv : dlm_update_block_on_the_remote_node data block 2 error = %i\n",
+		     error);
+		goto out;
+	}
+
 	post_block = get_post_block(node_id);
 	pr_info
 	    ("kv : dlm_update_block_on_the_remote_node post: block name: %s\n",
 	     post_block->name);
 
-	error = sync_dlm_lock(DLM_LOCK_EX, post_block, DLM_LKF_CONVERT,
-			      post_block->name, NULL);
+	error = sync_dlm_lock(DLM_LOCK_PR, post_block, DLM_LKF_CONVERT,
+			      post_block->name, post_data_getter_bast);
 
 	if (error != 0) {
 		pr_info
@@ -470,7 +544,7 @@ static int dlm_update_block_on_the_remote_node(struct update_structure *update,
 	}
 
 	error = sync_dlm_lock(DLM_LOCK_NL, post_block, DLM_LKF_CONVERT,
-			      post_block->name, NULL);
+			      post_block->name, post_data_getter_bast);
 
 	if (error) {
 		pr_info
@@ -536,9 +610,9 @@ int add_key(const char *key, const char *value)
 
 int lock_key(const char *key_name)
 {
-	char *value = "\0";
+	char value = '\0';
 	struct update_structure *update =
-	    create_update_structure(key_name, value, 3);
+	    create_update_structure(key_name, &value, 3);
 	int status;
 
 	if (is_there_lock(key_name)) {
@@ -577,9 +651,9 @@ int unlock_key(const char *key_name)
 			     this_machine_id, key_name, lock->owner);
 			return -1;
 		} else {
-			char *value = "\0";
+			char value = '\0';
 			struct update_structure *update =
-			    create_update_structure(key_name, value, 4);
+			    create_update_structure(key_name, &value, 4);
 			int status;
 
 			pr_info("kv : unlock_key: %s\n", key_name);
