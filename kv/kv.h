@@ -19,6 +19,8 @@
 #include "structures.h"
 #include "list_interactions.h"
 #include "buffer_interactions.h"
+#include "pacemaker_interactions.h"
+
 
 #ifdef pr_fmt
 #undef pr_fmt
@@ -39,6 +41,7 @@ int get_values(char *device_buffer, size_t size_in_min_buffer_left,
 	       loff_t * ppos);
 int dlm_init(void);
 int dlm_get_lkvb(struct dlm_block *block);
+
 
 void add_test_data(void);
 

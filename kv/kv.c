@@ -32,6 +32,13 @@ static struct dlm_block *get_pre_block(int node_id);
 static struct dlm_block *get_post_block(int node_id);
 static void pre_bast_initial(void *arg, int mode);
 
+
+void dlm_hw(void)
+{
+	pr_info("dlm : dlm_hw : Hello, world\n");
+}
+EXPORT_SYMBOL(dlm_hw);
+
 static void dlm_wait_ast(void *astarg)
 {
 	struct dlm_block *dlm_block = astarg;
@@ -356,6 +363,9 @@ int dlm_init(void)
 	struct dlm_block *post_block;
 	char pre_name[KV_MAX_KEY_NAME_LENGTH];
 	char post_name[KV_MAX_KEY_NAME_LENGTH];
+	char** node_ids_list;
+
+	error = get_cluster_nodes_info(&i, node_ids_list);
 
 	sys_locks =
 	    kcalloc(node_amount * 2, sizeof(struct dlm_block *), GFP_KERNEL);
