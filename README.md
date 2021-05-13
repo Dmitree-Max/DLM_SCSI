@@ -1,28 +1,39 @@
-# Char device driver
+# Sync module
 
 
-This driver supposed to store keys and thier locks.
+This kernel module provides distributed DataBase functionallity. It uses DLM, and pacemaker to work.
+
+
+Setup and create cluster with dlm resource.
+
 
 # Install:
 
 ```
-make 
-insmod ckv.ko
+apt-get install pcs
 
-...interaction...
-
-rmmod ckv
 ```
 
--`make`: compile and link
+add node ip's to /etc/hosts (as node-1, node-2)
 
--`insmod ckv.ko`: to include new module into kernel, you will have `/dev/ckv` device
+```
+systemctl start pcsd.service
 
--`rmmod ckv`:  to remove module
+systemctl enable pcsd.service
 
-# Possible interaction:
+pcs host auth pcmk-1 pcmk-2
 
-- `cat /dev/ckv`: to see all info
-- `echo 'add-key key value' > /dev/ckv`: to add key 'key' with value 'value'
-- `echo 'lock-key key' > /dev/ckv`: to lock key (will be locked according to locking machine id)
-- `echo 'unlock-key key' > /dev/ckv`: to unlock key 
+pcs cluster setup mycluster node-1 node-2
+
+crm_attribute -t crm_config -n no-quorum-policy -v ignore
+
+crm_attribute -t crm_config -n stonith-enabled -v false
+
+pcs resource create dlm ocf:pacemaker:controld args="-q0 -f0" allow_stonith_disabled=true op monitor timeout=60 clone interleave=true
+```
+
+Then run `pcs cluster start` on each node.
+
+
+Now you can use char device to use it (see ckv/README) or use it directly. For that you should build your module with kv's Module.symvers. 
+
