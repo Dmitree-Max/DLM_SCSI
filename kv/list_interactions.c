@@ -138,6 +138,10 @@ int remove_lock(const char *key)
 	if (strcmp(cur_node->data->key, key) == 0) {
 		lock_head = cur_node->next;
 		delete_lock_node(cur_node);
+		if (cur_node == lock_tail)
+		{
+			lock_tail = lock_head;
+		}
 		return 0;
 	}
 
