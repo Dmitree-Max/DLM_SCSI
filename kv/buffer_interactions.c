@@ -162,8 +162,8 @@ void update_to_buffer(const struct update_structure *update, char *buffer)
 	char key_length;
 	char value_length;
 
-	key_length = strlen(update->key);
-	value_length = strlen(update->value);
+	key_length = strlen(update->key) + 1;
+	value_length = strlen(update->value) + 1;
 
 	memcpy(buffer, (void *)&update->type, 1);
 	memcpy(buffer + 1, (void *)&key_length, 1);
@@ -175,8 +175,8 @@ void update_to_buffer(const struct update_structure *update, char *buffer)
 
 void update_from_buffer(struct update_structure *update, const char *buffer)
 {
-	char key_length = 'k';
-	char value_length = 'b';
+	char key_length;
+	char value_length;
 	char *new_key;
 	char *new_value;
 
