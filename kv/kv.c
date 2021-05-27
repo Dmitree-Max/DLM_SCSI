@@ -55,18 +55,20 @@ static int sync_dlm_lock(int mode,
 			 struct dlm_block *block, int flags,
 			 const char *name, void (*bast) (void *, int))
 {
-	int res;
+	int res = 0;
 
 	init_completion(block->compl);
 
 	res = dlm_lock(ls, mode, block->lksb, flags,
 		       (void *)name, name ? strlen(name) : 0, 0,
 		       dlm_wait_ast, block, bast);
+
 	if (res < 0)
 		pr_info("kv : sync_dlm_lock : Locking error: %i name: %s\n",
 			res, name);
 
 	res = wait_for_completion_timeout(block->compl, 60 * HZ);
+
 	if (res > 0)
 		res = block->lksb->sb_status;
 	else if (res == 0)
@@ -144,40 +146,52 @@ int get_values(char *buff, size_t length, loff_t * ppos)
 static int init_ls(void)
 {
 	int status;
-	status = dlm_new_lockspace("new_ls186", "mycluster", DLM_LSFL_FS,
+
+	ls =
+	    kmalloc(sizeof(dlm_lockspace_t), GFP_KERNEL);
+	if (!ls) {
+		status = -ENOMEM;
+		goto out;
+	}
+
+	status = dlm_new_lockspace("new_ls189", "mycluster", DLM_LSFL_FS,
 				   PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
 
 	pr_info("kv : init_ls: ls_create_status = %i\n", status);
+
+out:
 	return status;
 
 }
 
-static int process_update(struct update_structure update)
+static int process_update(const struct update_structure update)
 {
 	int error;
 
-	pr_info("kv : process_update : update type %i, key: %s, value: %s\n",
+	pr_info("kv : process_update : update type %c, key: %s, value: %s\n",
 		update.type, update.key, update.value);
 
 	switch (update.type) {
-	case 1:
+	case '1':
 		error = update_or_add_key(update.key, update.value);
 		pr_info("kv : process_update: ins or up %s = %s\n", update.key,
 			update.value);
 		break;
-	case 3:
+	case '3':
 		error = insert_lock(create_lock(update.key, this_machine_id));
 		pr_info("kv : process_update: locked %s\n", update.key);
 		break;
-	case 4:
+	case '4':
 		error = remove_lock(update.key);
 		pr_info("kv : process_update: locked %s\n", update.key);
 		break;
+    default:
+		pr_info("kv : process_update: wrong operation type %c\n", update.type);
 	}
 
 	if (error) {
 		pr_info
-		    ("kv : process_update: update fail: type: %i error: %i\n",
+		    ("kv : process_update: update fail: type: %c error: %i\n",
 		     update.type, error);
 	}
 
@@ -364,9 +378,9 @@ int dlm_init(void)
 	char pre_name[KV_MAX_KEY_NAME_LENGTH];
 	char post_name[KV_MAX_KEY_NAME_LENGTH];
 	char** node_ids_list;
-
-	error = get_cluster_nodes_info(&i, node_ids_list);
-
+//
+//	// error = get_cluster_nodes_info(&i, node_ids_list);
+//
 	sys_locks =
 	    kcalloc(node_amount * 2, sizeof(struct dlm_block *), GFP_KERNEL);
 	if (!sys_locks) {
@@ -389,8 +403,8 @@ int dlm_init(void)
 		}
 	}
 
-	strcpy(node_list[0], "1");
-	strcpy(node_list[1], "2");
+	strncpy(node_list[0], "1", MAX_NODE_NAME_LENGTH - 1);
+	strncpy(node_list[1], "2", MAX_NODE_NAME_LENGTH - 1);
 
 	error = init_ls();
 	if (error) {
@@ -406,13 +420,13 @@ int dlm_init(void)
 	for (i = 0; i < node_amount; i++) {
 		node_id = node_list[i];
 		pr_info("node id =  %s\n", node_id);
-		strncpy(pre_name, PRE_PREFIX, KV_MAX_KEY_NAME_LENGTH);
+		strncpy(pre_name, PRE_PREFIX, KV_MAX_KEY_NAME_LENGTH - 1);
 		strncat(pre_name, node_id,
-			KV_MAX_KEY_NAME_LENGTH - strlen(PRE_PREFIX));
+			KV_MAX_KEY_NAME_LENGTH - strlen(PRE_PREFIX) - 1);
 
-		strncpy(post_name, POST_PREFIX, KV_MAX_KEY_NAME_LENGTH);
+		strncpy(post_name, POST_PREFIX, KV_MAX_KEY_NAME_LENGTH - 1);
 		strncat(post_name, node_id,
-			KV_MAX_KEY_NAME_LENGTH - strlen(POST_PREFIX));
+			KV_MAX_KEY_NAME_LENGTH - strlen(POST_PREFIX) - 1);
 
 		pre_block = create_dlm_block(pre_name, this_machine_id);
 		post_block = create_dlm_block(post_name, this_machine_id);
@@ -452,6 +466,7 @@ int dlm_init(void)
 	data_block = create_dlm_block("data_block", this_machine_id);
 
 	pr_info("data block with name: %s\n", data_block->name);
+
 	error = sync_dlm_lock(DLM_LOCK_CR, data_block, DLM_LKF_VALBLK,
 			data_block->name, NULL);
 
@@ -469,7 +484,7 @@ static void print_ast(void *value)
 		block->lksb->sb_status, block->lksb->sb_lkid);
 }
 
-static int dlm_update_block_on_the_remote_node(struct update_structure *update,
+static int dlm_update_block_on_the_remote_node(const struct update_structure *update,
 					       int node_id)
 {
 	struct dlm_block *pre_block;
@@ -484,12 +499,15 @@ static int dlm_update_block_on_the_remote_node(struct update_structure *update,
 		return -1;
 	}
 
-	pr_info
-	    ("kv : dlm_update_block_on_the_remote_node pre: block name: %s\n",
+	pr_info("kv : dlm_update_block_on_the_remote_node pre: block name: %s\n",
 	     pre_block->name);
 
 	error = sync_dlm_lock(DLM_LOCK_EX, pre_block, DLM_LKF_CONVERT,
 			      pre_block->name, pre_bast_initial);
+
+	pr_info
+	    ("kv : dlm_update_block_on_the_remote_node1 pre_block convert succ\n",
+	     error);
 
 	if (error != 0) {
 		pr_info
@@ -568,7 +586,7 @@ out:
 	return error;
 }
 
-static int dlm_update_all_nodes(struct update_structure *update)
+static int dlm_update_all_nodes(const struct update_structure *update)
 {
 	int node_id;
 	int error;
@@ -582,7 +600,7 @@ static int dlm_update_all_nodes(struct update_structure *update)
 								node_id);
 		}
 		if (error != 0) {
-			pr_info("dlm : dlm_init: pre lock error = %i\n", error);
+			pr_info("dlm : dlm_update_all_nodes: error = %i\n", error);
 			goto out;
 		}
 
@@ -592,11 +610,11 @@ out:
 	return error;
 }
 
-int add_key(const char *key, const char *value)
+int kv_add_key(const char *key, const char *value)
 {
 	struct update_structure *update =
-	    create_update_structure(key, value, 1);
-	int status;
+	    create_update_structure(key, value, '1');
+	int status = 0;
 
 	if (ls == NULL) {
 		pr_info("kv : ls was NULL\n");
@@ -617,12 +635,13 @@ int add_key(const char *key, const char *value)
 	}
 	return status;
 }
+EXPORT_SYMBOL(kv_add_key);
 
-int lock_key(const char *key_name)
+int kv_lock_key(const char *key_name)
 {
 	char value = '\0';
 	struct update_structure *update =
-	    create_update_structure(key_name, &value, 3);
+	    create_update_structure(key_name, &value, '3');
 	int status;
 
 	if (is_there_lock(key_name)) {
@@ -630,7 +649,7 @@ int lock_key(const char *key_name)
 			key_name);
 		return -1;
 	} else {
-		if (is_there_such_key(key_name)) {
+		if (!is_there_such_key(key_name)) {
 			pr_info(KERN_INFO
 				"charDev : there is no such key: %s\n",
 				key_name);
@@ -646,8 +665,9 @@ int lock_key(const char *key_name)
 		}
 	}
 }
+EXPORT_SYMBOL(kv_lock_key);
 
-int unlock_key(const char *key_name)
+int kv_unlock_key(const char *key_name)
 {
 	struct lock *lock;
 	lock = find_lock(key_name);
@@ -663,7 +683,7 @@ int unlock_key(const char *key_name)
 		} else {
 			char value = '\0';
 			struct update_structure *update =
-			    create_update_structure(key_name, &value, 4);
+			    create_update_structure(key_name, &value, '4');
 			int status;
 
 			pr_info("kv : unlock_key: %s\n", key_name);
@@ -677,3 +697,4 @@ int unlock_key(const char *key_name)
 		}
 	}
 }
+EXPORT_SYMBOL(kv_unlock_key);
