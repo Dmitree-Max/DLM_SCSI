@@ -45,13 +45,13 @@ struct lock *create_lock(const char *key, const char *owner)
 		goto out;
 	}
 
-	new_key = kcalloc(strlen(key), sizeof(char), GFP_KERNEL);
+	new_key = kcalloc(strlen(key) + 1, sizeof(char), GFP_KERNEL);
 	if (!new_key) {
 		error = -ENOMEM;
 		goto out;
 	}
 
-	new_owner = kcalloc(strlen(owner), sizeof(char), GFP_KERNEL);
+	new_owner = kcalloc(strlen(owner) + 1, sizeof(char), GFP_KERNEL);
 	if (!new_owner) {
 		error = -ENOMEM;
 		goto out;
@@ -86,7 +86,7 @@ struct dlm_block *create_dlm_block(const char *key, const char *value)
 		goto out;
 	}
 
-	newkey = kcalloc(strlen(key), sizeof(char), GFP_KERNEL);
+	newkey = kcalloc(strlen(key) + 1, sizeof(char), GFP_KERNEL);
 	if (!newkey) {
 		error = -ENOMEM;
 		goto out;
@@ -94,7 +94,7 @@ struct dlm_block *create_dlm_block(const char *key, const char *value)
 
 	strcpy(newkey, key);
 
-	newvalue = kcalloc(strlen(value), sizeof(char), GFP_KERNEL);
+	newvalue = kcalloc(strlen(value) + 1, sizeof(char), GFP_KERNEL);
 	if (!newvalue) {
 		error = -ENOMEM;
 		goto out;
@@ -141,11 +141,11 @@ struct dlm_block *copy_block(struct dlm_block *block)
 
 	key = block->name;
 	new_lksb = kmalloc(sizeof(struct dlm_lksb), GFP_KERNEL);
-	newkey = kcalloc(strlen(block->name), sizeof(char), GFP_KERNEL);
+	newkey = kcalloc(strlen(block->name) + 1, sizeof(char), GFP_KERNEL);
 	strcpy(newkey, block->name);
 
 	newvalue =
-	    kcalloc(strlen(block->lksb->sb_lvbptr), sizeof(char), GFP_KERNEL);
+	    kcalloc(strlen(block->lksb->sb_lvbptr) + 1, sizeof(char), GFP_KERNEL);
 	strcpy(newvalue, block->lksb->sb_lvbptr);
 
 	new_lksb->sb_status = block->lksb->sb_status;
@@ -178,7 +178,7 @@ struct update_structure *create_update_structure(const char *key,
 	char *newvalue;
 	struct update_structure *res;
 
-	newkey = kcalloc(strlen(key), sizeof(char), GFP_KERNEL);
+	newkey = kcalloc(strlen(key) + 1, sizeof(char), GFP_KERNEL);
 	if (!newkey) {
 		error = -ENOMEM;
 		goto out;
@@ -186,7 +186,7 @@ struct update_structure *create_update_structure(const char *key,
 
 	strcpy(newkey, key);
 
-	newvalue = kcalloc(strlen(value), sizeof(char), GFP_KERNEL);
+	newvalue = kcalloc(strlen(value) + 1, sizeof(char), GFP_KERNEL);
 	if (!newvalue) {
 		error = -ENOMEM;
 		goto out;
@@ -256,7 +256,7 @@ struct key_value *create_key(const char *key, const char *value)
 		goto out;
 	}
 
-	new_key = kcalloc(strlen(key), sizeof(char), GFP_KERNEL);
+	new_key = kcalloc(strlen(key) + 1, sizeof(char), GFP_KERNEL);
 
 	if (!new_key) {
 		error = -ENOMEM;
@@ -265,7 +265,7 @@ struct key_value *create_key(const char *key, const char *value)
 
 	strcpy(new_key, key);
 
-	new_value = kcalloc(strlen(value), sizeof(char), GFP_KERNEL);
+	new_value = kcalloc(strlen(value) + 1, sizeof(char), GFP_KERNEL);
 	if (!new_value) {
 		error = -ENOMEM;
 		goto out;
