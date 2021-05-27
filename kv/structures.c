@@ -94,7 +94,7 @@ struct dlm_block *create_dlm_block(const char *key, const char *value)
 
 	strcpy(newkey, key);
 
-	newvalue = kcalloc(strlen(value) + 1, sizeof(char), GFP_KERNEL);
+	newvalue = kcalloc(PR_DLM_LVB_LEN, sizeof(char), GFP_KERNEL);
 	if (!newvalue) {
 		error = -ENOMEM;
 		goto out;
@@ -110,6 +110,7 @@ struct dlm_block *create_dlm_block(const char *key, const char *value)
 
 	new_lksb->sb_status = 0;
 	new_lksb->sb_lkid = 0;
+	new_lksb->sb_flags = 0;
 	new_lksb->sb_lvbptr = newvalue;
 
 	new_block = kmalloc(sizeof(struct dlm_block), GFP_KERNEL);
