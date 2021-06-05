@@ -21,6 +21,9 @@ int insert_lock(struct lock *lock);
 // returns true if there is lock with such name
 bool is_there_lock(const char *key_name);
 
+// removes key, if it exists. Otherwise returns -1.
+int remove_key(const char *key);
+
 // returns first lock with provided key, or NULL
 struct lock *find_lock(const char *key_name);
 
