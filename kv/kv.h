@@ -33,9 +33,10 @@
 #define PRE_PREFIX "pre_"
 #define POST_PREFIX "post_"
 
-int add_key(const char *key, const char *value);
-int lock_key(const char *key);
-int unlock_key(const char *key);
+int kv_add_key(const char *key, const char *value);
+int kv_remove_key(const char *key);
+int kv_lock_key(const char *key);
+int kv_unlock_key(const char *key);
 
 int get_values(char *device_buffer, size_t size_in_min_buffer_left,
 	       loff_t * ppos);

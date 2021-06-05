@@ -24,10 +24,6 @@ int make_command(char *buff, int length)
 			printk(KERN_INFO "charDev : key name is NULL\n");
 			return -1;
 		}
-		else
-		{
-			printk(KERN_INFO "make_command : key name is %s\n", key_name);
-		}
 
 		length_left -= next - buff;
 		buff = next;
@@ -36,12 +32,16 @@ int make_command(char *buff, int length)
 			printk(KERN_INFO "charDev : key value is NULL\n");
 			return -1;
 		}
-		else
-		{
-			printk(KERN_INFO "make_command : value is %s\n", key_value);
-		}
 
 		return kv_add_key(key_name, key_value);
+	}
+	if (strcmp(command, "remove-key") == 0) {
+		key_name = split(buff, " ", &next, length_left);
+		if (key_name == NULL) {
+			printk(KERN_INFO "charDev : key name is NULL\n");
+			return -1;
+		}
+		return kv_remove_key(key_name);
 	}
 	if (strcmp(command, "lock-key") == 0) {
 		key_name = split(buff, " ", &next, length_left);

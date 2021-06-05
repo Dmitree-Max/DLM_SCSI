@@ -26,8 +26,6 @@ struct work_struct first_bast;
 struct work_struct second_bast;
 struct dlm_block *data_block;
 
-static void print_ast(void *value);
-static void print_astarg_key_value(void *value);
 static struct dlm_block *get_pre_block(int node_id);
 static struct dlm_block *get_post_block(int node_id);
 static void pre_bast_initial(void *arg, int mode);
@@ -81,12 +79,6 @@ static int sync_dlm_lock(int mode,
 	return res;
 }
 
-static void print_lksb(struct dlm_lksb *lksb)
-{
-	pr_info("kv lksb : status: %d, id: %i, flags: %d, lvb : %s\n",
-		lksb->sb_status, lksb->sb_lkid, lksb->sb_flags,
-		lksb->sb_lvbptr);
-}
 
 static void print_all_sys_blocks(void)
 {
@@ -154,7 +146,7 @@ static int init_ls(void)
 		goto out;
 	}
 
-	status = dlm_new_lockspace("new_ls189", "mycluster", DLM_LSFL_FS,
+	status = dlm_new_lockspace("new_ls190", "mycluster", DLM_LSFL_FS,
 				   PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
 
 	pr_info("kv : init_ls: ls_create_status = %i\n", status);
@@ -166,7 +158,7 @@ out:
 
 static int process_update(const struct update_structure update)
 {
-	int error;
+	int error = 0;
 
 	pr_info("kv : process_update : update type %c, key: %s, value: %s\n",
 		update.type, update.key, update.value);
@@ -177,13 +169,17 @@ static int process_update(const struct update_structure update)
 		pr_info("kv : process_update: ins or up %s = %s\n", update.key,
 			update.value);
 		break;
+	case '2':
+		error = remove_key(update.key);
+		pr_info("kv : process_update: remove key %s\n", update.key);
+		break;
 	case '3':
-		error = insert_lock(create_lock(update.key, this_machine_id));
-		pr_info("kv : process_update: locked %s\n", update.key);
+		error = insert_lock(create_lock(update.key, update.value));
+		pr_info("kv : process_update: locked %s by %s\n", update.key, update.value);
 		break;
 	case '4':
 		error = remove_lock(update.key);
-		pr_info("kv : process_update: locked %s\n", update.key);
+		pr_info("kv : process_update: unlocked %s\n", update.key);
 		break;
     default:
 		pr_info("kv : process_update: wrong operation type %c\n", update.type);
@@ -477,12 +473,6 @@ out:
 	return error;
 }
 
-static void print_ast(void *value)
-{
-	struct dlm_block *block = (struct dlm_block *)value;
-	pr_info(KERN_INFO "kv : print_ast: status = %i, lockid: %d\n",
-		block->lksb->sb_status, block->lksb->sb_lkid);
-}
 
 static int dlm_update_block_on_the_remote_node(const struct update_structure *update,
 					       int node_id)
@@ -615,15 +605,20 @@ int kv_add_key(const char *key, const char *value)
 	struct update_structure *update =
 	    create_update_structure(key, value, '1');
 	int status = 0;
+	struct lock* lock;
 
-	if (ls == NULL) {
-		pr_info("kv : ls was NULL\n");
-		init_ls();
-		if (ls == NULL) {
-			pr_info("kv : ls still 0\n");
-		} else {
-			pr_info
-			    ("kv : ls is not NULL now | init in register_key??\n");
+	if (is_there_such_key(key))
+	{
+		lock = find_lock(key);
+		if (lock != NULL)
+		{
+			if (strcmp(lock->owner, this_machine_id) != 0)
+			{
+				pr_info
+				    ("charDev : Can't update key %s locked by %s\n",
+				     key, lock->owner);
+				return -1;
+			}
 		}
 	}
 
@@ -637,11 +632,44 @@ int kv_add_key(const char *key, const char *value)
 }
 EXPORT_SYMBOL(kv_add_key);
 
-int kv_lock_key(const char *key_name)
+
+int kv_remove_key(const char *key)
 {
 	char value = '\0';
 	struct update_structure *update =
-	    create_update_structure(key_name, &value, '3');
+	    create_update_structure(key, &value, '2');
+	int status = 0;
+	struct lock *lock = find_lock(key);
+
+	if (lock != NULL) {
+		pr_info("kv_remove_key : can't remove key %s, because it is locked\n", key);
+		return -1;
+	}
+
+	if (ls == NULL) {
+		pr_info("kv : ls was NULL\n");
+		init_ls();
+		if (ls == NULL) {
+			pr_info("kv : ls still 0\n");
+		} else {
+			pr_info
+			    ("kv : ls is not NULL now | init in register_key??\n");
+		}
+	}
+
+	pr_info("kv : remove_key %s \n", key);
+	status = dlm_update_all_nodes(update);
+
+	if (status < 0) {
+		pr_info("dlmlock : lock error, status: %i\n", status);
+	}
+	return status;
+}
+
+int kv_lock_key(const char *key_name)
+{
+	struct update_structure *update =
+	    create_update_structure(key_name, this_machine_id, '3');
 	int status;
 
 	if (is_there_lock(key_name)) {
