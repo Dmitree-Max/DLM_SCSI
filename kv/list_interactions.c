@@ -53,9 +53,9 @@ int update_or_add_key(const char *key, const char *value)
 			kfree(cur_node->data->value);
 
 			new_value =
-			    (char *)kmalloc(strlen(value) * sizeof(char),
+			    (char *)kcalloc(strlen(value) + 1, sizeof(char),
 					    GFP_KERNEL);
-			strncpy(new_value, value, KV_MAX_KEY_NAME_LENGTH);
+			strncpy(new_value, value, strlen(value) + 1);
 
 			cur_node->data->value = new_value;
 			return 0;
@@ -122,6 +122,7 @@ int insert_lock(struct lock *lock)
 	if (lock_tail != NULL) {
 		lock_tail->next = new_node;
 	}
+
 	if (lock_head == NULL) {
 		lock_head = new_node;
 	}
@@ -131,7 +132,7 @@ int insert_lock(struct lock *lock)
 
 int remove_lock(const char *key)
 {
-	struct lock_node *temp;
+	struct lock_node *to_remove;
 	struct lock_node *cur_node;
 
 	cur_node = lock_head;
@@ -145,17 +146,49 @@ int remove_lock(const char *key)
 		return 0;
 	}
 
-	while (cur_node != NULL) {
-		if (cur_node->next != NULL) {
-			if (strcmp(cur_node->data->key, key) == 0) {
-				temp = cur_node->next;
-				if (cur_node->next == lock_tail) {
-					lock_tail = cur_node;
-				}
-				cur_node->next = cur_node->next->next;
-				delete_lock_node(temp);
-				return 0;
+	while (cur_node->next != NULL) {
+		if (strcmp(cur_node->next->data->key, key) == 0) {
+			to_remove = cur_node->next;
+			if (to_remove == lock_tail) {
+				lock_tail = cur_node;
 			}
+
+			cur_node->next = cur_node->next->next;
+			delete_lock_node(to_remove);
+			return 0;
+		}
+		cur_node = cur_node->next;
+	}
+	return -1;
+}
+
+
+int remove_key(const char *key)
+{
+	struct key_node *to_remove;
+	struct key_node *cur_node;
+
+	cur_node = key_head;
+	if (strcmp(cur_node->data->key, key) == 0) {
+		key_head = cur_node->next;
+		delete_key_node(cur_node);
+		if (cur_node == key_tail)
+		{
+			key_tail = key_head;
+		}
+		return 0;
+	}
+
+	while (cur_node->next != NULL) {
+		if (strcmp(cur_node->next->data->key, key) == 0) {
+			to_remove = cur_node->next;
+			if (to_remove == key_tail) {
+				key_tail = cur_node;
+			}
+
+			cur_node->next = cur_node->next->next;
+			delete_key_node(to_remove);
+			return 0;
 		}
 		cur_node = cur_node->next;
 	}
