@@ -71,7 +71,7 @@ struct lock *create_lock(const char *key, const char *owner);
 void delete_lock_node(struct lock_node *node);
 
 // frees memory
-void delete_lock(struct lock *lock);
+void delete_key_node(struct key_node *node);
 
 // creates new dlm block, key and value values copied to new allocated memory
 struct dlm_block *create_dlm_block(const char *key, const char *value);
