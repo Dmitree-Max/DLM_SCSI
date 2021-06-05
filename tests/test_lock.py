@@ -21,7 +21,7 @@ def test_lock():
     # existing key
     lock_key(other_node, "test2_key")
     locks.append("test2_key")
-    locks.append(other_node)
+    locks.append(node_names[other_node])
 
     check_state_on_nodes(keys, locks, all_nodes)
 
@@ -39,4 +39,6 @@ def test_lock():
     lock_key(this_node, "test2_key")
 
     check_state_on_nodes(keys, locks, all_nodes)
+
+    clean_state()
 

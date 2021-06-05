@@ -15,7 +15,7 @@ def test_add():
     for i in range(100):
         lock_key(other_node, "test_key")
         locks.append("test_key")
-        locks.append(other_node)
+        locks.append(node_names[other_node])
 
         check_state_on_nodes(keys, locks, all_nodes)
 
@@ -25,3 +25,4 @@ def test_add():
 
         check_state_on_nodes(keys, locks, all_nodes)
 
+    clean_state()

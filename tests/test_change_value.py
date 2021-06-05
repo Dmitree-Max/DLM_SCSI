@@ -21,3 +21,22 @@ def test_add():
     keys[1] = "changed2_value"
 
     check_state_on_nodes(keys, locks, all_nodes)
+
+    lock_key(other_node, "test_key")
+    locks.append("test_key")
+    locks.append(node_names[other_node])
+
+    check_state_on_nodes(keys, locks, all_nodes)
+
+    # Can't change value, because locked by other node
+    add_key(this_node, "test_key", "changed3_value")
+
+    check_state_on_nodes(keys, locks, all_nodes)
+
+    # Can change value locked by this node
+    add_key(other_node, "test_key", "changed3_value")
+    keys[1] = "changed3_value"
+
+    check_state_on_nodes(keys, locks, all_nodes)
+
+    clean_state()

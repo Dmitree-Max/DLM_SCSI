@@ -7,7 +7,21 @@ user = "dmitree"
 this_node = "10.10.10.8"
 filepath = "/dev/ckv"
 password = "irfa00vtn"
-all_nodes = [other_node, this_node]
+# all_nodes = [other_node, this_node]
+all_nodes = [this_node]
+
+node_names = {this_node: "1", other_node: "2"}
+
+
+def get_address_by_name(name):
+    address = ""
+    for key in node_names.keys():
+        if node_names[key] == name:
+            address = key
+            break
+
+    assert address != ""
+    return address
 
 
 def work_with_file_read(function_to_do):
@@ -49,7 +63,7 @@ def execute_command_ckv(node_addr, command):
         ssh.close()
 
     # We need to wait after each command to test that change made on all nodes
-    time.sleep(3)
+    time.sleep(1)
 
 
 def compare_lists(x, y):
@@ -104,6 +118,10 @@ def lock_key(nodeaddr, key):
     execute_command_ckv(nodeaddr, "lock-key " + key)
 
 
+def remove_key(nodeaddr, key):
+    execute_command_ckv(nodeaddr, "remove-key " + key)
+
+
 def unlock_key(nodeaddr, key):
     execute_command_ckv(nodeaddr, "unlock-key " + key)
 
@@ -122,3 +140,32 @@ def check_state_on_nodes(keys, locks, nodes):
         ks, ls = read_keys_and_locks_from_file(node)
         compare_lists(keys, ks)
         compare_lists(locks, ls)
+
+
+def remove_all_locks():
+    _, ls = read_keys_and_locks_from_file(this_node)
+    assert len(ls) % 2 == 0
+    while len(ls) > 1:
+        key = ls[0]
+        lock_owner = ls[1]
+        unlock_key(get_address_by_name(lock_owner), key)
+        ls.pop(0)
+        ls.pop(0)
+
+
+def clean_state():
+    remove_all_locks()
+    ks, ls = read_keys_and_locks_from_file(this_node)
+    assert len(ls) == 0
+    assert len(ks) % 2 == 0
+
+    while len(ks) > 1:
+        key = ks[0]
+        remove_key(this_node, key)
+        ks.pop(0)
+        ks.pop(0)
+
+    ks, ls = read_keys_and_locks_from_file(this_node)
+    assert len(ks) == 0
+    assert len(ls) == 0
+

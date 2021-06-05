@@ -2,6 +2,7 @@ from supporting_functions import *
 
 
 def test_add():
+
     assert_state_is_empty()
     locks = []
     keys = []
@@ -23,3 +24,6 @@ def test_add():
     keys.append("test3_value")
 
     check_state_on_nodes(keys, locks, all_nodes)
+
+    clean_state()
+
