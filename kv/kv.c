@@ -20,11 +20,13 @@ module_param(this_machine_id, charp, 0);
 int node_amount = 2;
 char **node_list = NULL;
 int this_node_id;
-struct dlm_block **sys_locks;
-
 struct work_struct first_bast;
 struct work_struct second_bast;
 struct dlm_block *data_block;
+struct dlm_block *semaphore_block;
+struct dlm_block **sys_locks;
+
+struct mutex update_mutex;
 
 static struct dlm_block *get_pre_block(int node_id);
 static struct dlm_block *get_post_block(int node_id);
@@ -79,6 +81,41 @@ static int sync_dlm_lock(int mode,
 	return res;
 }
 
+static int start_critical_section(void)
+{
+	int error = 0;
+
+	mutex_lock(&update_mutex);
+	error = sync_dlm_lock(DLM_LOCK_EX, semaphore_block, DLM_LKF_CONVERT,
+			semaphore_block->name, NULL);
+
+	if (error) {
+		pr_info("kv : start_critical_section: semaphore_block convert failed: %i\n",
+			error);
+	} else {
+		pr_info("kv : start_critical_section: semaphore_block convert succeed\n");
+	}
+
+	return error;
+}
+
+static int leave_critical_section(void)
+{
+	int error;
+
+	mutex_unlock(&update_mutex);
+	error = sync_dlm_lock(DLM_LOCK_NL, semaphore_block, DLM_LKF_CONVERT,
+			semaphore_block->name, NULL);
+
+	if (error) {
+		pr_info("kv : leave_critical_section: semaphore_block convert failed: %i\n",
+			error);
+	} else {
+		pr_info("kv : leave_critical_section: semaphore_block convert succeed\n");
+	}
+
+	return error;
+}
 
 static void print_all_sys_blocks(void)
 {
@@ -139,14 +176,14 @@ static int init_ls(void)
 {
 	int status;
 
-	ls =
-	    kmalloc(sizeof(dlm_lockspace_t), GFP_KERNEL);
+	ls = kmalloc(sizeof(dlm_lockspace_t), GFP_KERNEL);
+
 	if (!ls) {
 		status = -ENOMEM;
 		goto out;
 	}
 
-	status = dlm_new_lockspace("new_ls190", "mycluster", DLM_LSFL_FS,
+	status = dlm_new_lockspace("new_ls194", "mycluster", DLM_LSFL_FS,
 				   PR_DLM_LVB_LEN, NULL, NULL, NULL, &ls);
 
 	pr_info("kv : init_ls: ls_create_status = %i\n", status);
@@ -156,39 +193,39 @@ out:
 
 }
 
-static int process_update(const struct update_structure update)
+static int process_update(const struct update_structure* update)
 {
 	int error = 0;
 
 	pr_info("kv : process_update : update type %c, key: %s, value: %s\n",
-		update.type, update.key, update.value);
+		update->type, update->key, update->value);
 
-	switch (update.type) {
+	switch (update->type) {
 	case '1':
-		error = update_or_add_key(update.key, update.value);
-		pr_info("kv : process_update: ins or up %s = %s\n", update.key,
-			update.value);
+		error = update_or_add_key(update->key, update->value);
+		pr_info("kv : process_update: ins or up %s = %s\n", update->key,
+			update->value);
 		break;
 	case '2':
-		error = remove_key(update.key);
-		pr_info("kv : process_update: remove key %s\n", update.key);
+		error = remove_key(update->key);
+		pr_info("kv : process_update: remove key %s\n", update->key);
 		break;
 	case '3':
-		error = insert_lock(create_lock(update.key, update.value));
-		pr_info("kv : process_update: locked %s by %s\n", update.key, update.value);
+		error = insert_lock(create_lock(update->key, update->value));
+		pr_info("kv : process_update: locked %s by %s\n", update->key, update->value);
 		break;
 	case '4':
-		error = remove_lock(update.key);
-		pr_info("kv : process_update: unlocked %s\n", update.key);
+		error = remove_lock(update->key);
+		pr_info("kv : process_update: unlocked %s\n", update->key);
 		break;
     default:
-		pr_info("kv : process_update: wrong operation type %c\n", update.type);
+		pr_info("kv : process_update: wrong operation type %c\n", update->type);
 	}
 
 	if (error) {
 		pr_info
 		    ("kv : process_update: update fail: type: %c error: %i\n",
-		     update.type, error);
+		     update->type, error);
 	}
 
 	return error;
@@ -202,7 +239,7 @@ static void post_data_getter_bast(void *arg, int mode)
 
 static void post_data_getter_work(struct work_struct *work)
 {
-	struct update_structure update;
+	struct update_structure* update = create_empty_update_structure();
 
 	int error = 0;
 
@@ -239,12 +276,13 @@ static void post_data_getter_work(struct work_struct *work)
 	pr_info("kv : post_data_getter_work : buffer: %s\n",
 		data_block->lksb->sb_lvbptr);
 
-    update_from_buffer(&update, data_block->lksb->sb_lvbptr);
+    update_from_buffer(update, data_block->lksb->sb_lvbptr);
 
     printk("kv : post_data_getter_work : update type %i, key: %s, value: %s\n",
-                      update.type, update.key, update.value);
+                      update->type, update->key, update->value);
 
     error = process_update(update);
+    delete_update_structure(update);
 
 	if (error) {
 		pr_info
@@ -303,14 +341,10 @@ static void pre_bast_initial_work(struct work_struct *work)
 	struct dlm_block *pre_block;
 	struct dlm_block *post_block = get_post_block(this_node_id);
 
-
 	if (post_block == NULL) {
 		pr_info("kv : pre_bast_initial_work: post block not found\n");
 		goto out;
 	}
-
-	pr_info("kv : pre_bast_initial_work: post block name: %s id: %i\n",
-		post_block->name, post_block->lksb->sb_lkid);
 
 	error = sync_dlm_lock(DLM_LOCK_EX, post_block, DLM_LKF_CONVERT,
 			      post_block->name, post_data_getter_bast);
@@ -342,6 +376,18 @@ static void pre_bast_initial_work(struct work_struct *work)
 	} else {
 		pr_info("kv : pre_bast_initial_work: pre convert succeed\n");
 	}
+
+	error = sync_dlm_lock(DLM_LOCK_NL, semaphore_block, DLM_LKF_CONVERT,
+			semaphore_block->name, NULL);
+
+	if (error) {
+		pr_info("kv : pre_bast_initial_work: semaphore_block release failed: %i\n",
+			error);
+		goto out;
+	} else {
+		pr_info("kv : pre_bast_initial_work: semaphore_block release succeed\n");
+	}
+
 
 out:
 	return;
@@ -377,6 +423,7 @@ int dlm_init(void)
 //
 //	// error = get_cluster_nodes_info(&i, node_ids_list);
 //
+
 	sys_locks =
 	    kcalloc(node_amount * 2, sizeof(struct dlm_block *), GFP_KERNEL);
 	if (!sys_locks) {
@@ -384,7 +431,7 @@ int dlm_init(void)
 		goto out;
 	}
 
-	node_list = kmalloc(sizeof(char **), GFP_KERNEL);
+	node_list = kcalloc(node_amount, sizeof(char *), GFP_KERNEL);
 	if (!node_list) {
 		error = -ENOMEM;
 		goto out;
@@ -399,8 +446,8 @@ int dlm_init(void)
 		}
 	}
 
-	strncpy(node_list[0], "1", MAX_NODE_NAME_LENGTH - 1);
-	strncpy(node_list[1], "2", MAX_NODE_NAME_LENGTH - 1);
+	strncpy(node_list[0], "1", MAX_NODE_NAME_LENGTH);
+	strncpy(node_list[1], "2", MAX_NODE_NAME_LENGTH);
 
 	error = init_ls();
 	if (error) {
@@ -416,11 +463,11 @@ int dlm_init(void)
 	for (i = 0; i < node_amount; i++) {
 		node_id = node_list[i];
 		pr_info("node id =  %s\n", node_id);
-		strncpy(pre_name, PRE_PREFIX, KV_MAX_KEY_NAME_LENGTH - 1);
+		strncpy(pre_name, PRE_PREFIX, KV_MAX_KEY_NAME_LENGTH);
 		strncat(pre_name, node_id,
 			KV_MAX_KEY_NAME_LENGTH - strlen(PRE_PREFIX) - 1);
 
-		strncpy(post_name, POST_PREFIX, KV_MAX_KEY_NAME_LENGTH - 1);
+		strncpy(post_name, POST_PREFIX, KV_MAX_KEY_NAME_LENGTH);
 		strncat(post_name, node_id,
 			KV_MAX_KEY_NAME_LENGTH - strlen(POST_PREFIX) - 1);
 
@@ -459,12 +506,27 @@ int dlm_init(void)
 				      post_block->name, post_data_getter_bast);
 	}
 
-	data_block = create_dlm_block("data_block", this_machine_id);
+	mutex_init(&update_mutex);
 
-	pr_info("data block with name: %s\n", data_block->name);
+	data_block = create_dlm_block("data_block", this_machine_id);
 
 	error = sync_dlm_lock(DLM_LOCK_CR, data_block, DLM_LKF_VALBLK,
 			data_block->name, NULL);
+
+	if (error != 0) {
+		pr_info("data lock error = %i\n", error);
+		goto out;
+	}
+
+	semaphore_block = create_dlm_block("semaphore_block", this_machine_id);
+
+	error = sync_dlm_lock(DLM_LOCK_NL, semaphore_block, 0,
+			semaphore_block->name, NULL);
+
+	if (error != 0) {
+		pr_info("semaphore lock error = %i\n", error);
+		goto out;
+	}
 
 	print_all_sys_blocks();
 
@@ -486,7 +548,8 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 	if (pre_block == NULL) {
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node: block not found\n");
-		return -1;
+		error = -1;
+		goto error;
 	}
 
 	pr_info("kv : dlm_update_block_on_the_remote_node pre: block name: %s\n",
@@ -503,7 +566,7 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node1 error = %i\n",
 		     error);
-		goto out;
+		goto error;
 	}
 
 
@@ -515,7 +578,7 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node2 error = %i\n",
 		     error);
-		goto out;
+		goto error;
 	}
 
 	error =
@@ -527,7 +590,7 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node data block 1 error = %i\n",
 		     error);
-		goto out;
+		goto error;
 	}
 
 	update_to_buffer(update, data_block->lksb->sb_lvbptr);
@@ -543,7 +606,7 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node data block 2 error = %i\n",
 		     error);
-		goto out;
+		goto error;
 	}
 
 	post_block = get_post_block(node_id);
@@ -558,7 +621,7 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node3 error = %i\n",
 		     error);
-		goto out;
+		goto error;
 	}
 
 	error = sync_dlm_lock(DLM_LOCK_NL, post_block, DLM_LKF_CONVERT,
@@ -568,10 +631,16 @@ static int dlm_update_block_on_the_remote_node(const struct update_structure *up
 		pr_info
 		    ("kv : dlm_update_block_on_the_remote_node4 error = %i\n",
 		     error);
+		goto error;
 	} else {
 		pr_info("kv : dlm_update_block_on_the_remote : success!!\n");
+		goto out;
 	}
 
+
+error:
+
+	leave_critical_section();
 out:
 	return error;
 }
@@ -583,7 +652,7 @@ static int dlm_update_all_nodes(const struct update_structure *update)
 
 	for (node_id = 0; node_id < node_amount; node_id++) {
 		if (this_node_id == node_id) {
-			error = process_update(*update);
+			error = process_update(update);
 		} else {
 			error =
 			    dlm_update_block_on_the_remote_node(update,
@@ -594,6 +663,12 @@ static int dlm_update_all_nodes(const struct update_structure *update)
 			goto out;
 		}
 
+	}
+
+	error = leave_critical_section();
+	if (!error) {
+		pr_info("leave_critical_section failure. Error: %i\n", error);
+		goto out;
 	}
 
 out:
@@ -607,6 +682,12 @@ int kv_add_key(const char *key, const char *value)
 	int status = 0;
 	struct lock* lock;
 
+	status = start_critical_section();
+	if (status) {
+		pr_info("start_critical_section failure. Error: %i\n", status);
+		return -1;
+	}
+
 	if (is_there_such_key(key))
 	{
 		lock = find_lock(key);
@@ -617,7 +698,8 @@ int kv_add_key(const char *key, const char *value)
 				pr_info
 				    ("charDev : Can't update key %s locked by %s\n",
 				     key, lock->owner);
-				return -1;
+				status = -1;
+				goto error;
 			}
 		}
 	}
@@ -628,6 +710,17 @@ int kv_add_key(const char *key, const char *value)
 	if (status < 0) {
 		pr_info("dlmlock : lock error, status: %i\n", status);
 	}
+	goto out;
+
+error:
+	pr_info("kv_add_key error: %i\n", status);
+	status = leave_critical_section();
+	if (!status) {
+		pr_info("leave_critical_section error %i\n", status);
+	}
+
+out:
+	delete_update_structure(update);
 	return status;
 }
 EXPORT_SYMBOL(kv_add_key);
@@ -639,30 +732,38 @@ int kv_remove_key(const char *key)
 	struct update_structure *update =
 	    create_update_structure(key, &value, '2');
 	int status = 0;
-	struct lock *lock = find_lock(key);
+	struct lock *lock ;
 
-	if (lock != NULL) {
-		pr_info("kv_remove_key : can't remove key %s, because it is locked\n", key);
+	status = start_critical_section();
+	if (status) {
+		pr_info("start_critical_section failure. Error: %i\n", status);
 		return -1;
 	}
 
-	if (ls == NULL) {
-		pr_info("kv : ls was NULL\n");
-		init_ls();
-		if (ls == NULL) {
-			pr_info("kv : ls still 0\n");
-		} else {
-			pr_info
-			    ("kv : ls is not NULL now | init in register_key??\n");
-		}
+	lock = find_lock(key);
+
+	if (lock != NULL) {
+		pr_info("kv_remove_key : can't remove key %s, because it is locked\n", key);
+		status = -1;
+		goto error;
 	}
 
-	pr_info("kv : remove_key %s \n", key);
 	status = dlm_update_all_nodes(update);
 
 	if (status < 0) {
 		pr_info("dlmlock : lock error, status: %i\n", status);
 	}
+	goto out;
+
+error:
+	pr_info("kv_remove_key error: %i\n", status);
+	status = leave_critical_section();
+	if (!status) {
+		pr_info("leave_critical_section error %i\n", status);
+	}
+
+out:
+	delete_update_structure(update);
 	return status;
 }
 
@@ -672,16 +773,24 @@ int kv_lock_key(const char *key_name)
 	    create_update_structure(key_name, this_machine_id, '3');
 	int status;
 
+	status = start_critical_section();
+	if (status) {
+		pr_info("start_critical_section failure. Error: %i\n", status);
+		return -1;
+	}
+
 	if (is_there_lock(key_name)) {
 		pr_info(KERN_INFO "charDev : try to lock locked key: %s\n",
 			key_name);
-		return -1;
+		status = -1;
+		goto error;
 	} else {
 		if (!is_there_such_key(key_name)) {
 			pr_info(KERN_INFO
 				"charDev : there is no such key: %s\n",
 				key_name);
-			return -1;
+			status = -1;
+			goto error;
 		} else {
 			pr_info("kv : lock_key: %s\n", key_name);
 			status = dlm_update_all_nodes(update);
@@ -689,29 +798,50 @@ int kv_lock_key(const char *key_name)
 				pr_info("dlmlock : lock error, status: %i\n",
 					status);
 			}
-			return status;
+			status = -1;
+			goto error;
 		}
 	}
+	goto out;
+
+error:
+	pr_info("kv_lock_key error: %i\n", status);
+	status = leave_critical_section();
+	if (!status) {
+		pr_info("leave_critical_section error %i\n", status);
+	}
+
+out:
+	delete_update_structure(update);
+	return status;
 }
 EXPORT_SYMBOL(kv_lock_key);
 
 int kv_unlock_key(const char *key_name)
 {
+	char value = '\0';
+	struct update_structure *update =
+	    create_update_structure(key_name, &value, '4');
 	struct lock *lock;
+	status = start_critical_section();
+	if (status) {
+		pr_info("start_critical_section failure. Error: %i\n", status);
+		return -1;
+	}
+
 	lock = find_lock(key_name);
 	if (lock == NULL) {
 		pr_info("charDev : there is no such lock: %s\n", key_name);
-		return -1;
+		status = -1;
+		goto error;
 	} else {
 		if (strcmp(lock->owner, this_machine_id) != 0) {
 			pr_info
 			    ("charDev : %s tries to unlock %s, which owned by %s\n",
 			     this_machine_id, key_name, lock->owner);
-			return -1;
+			status = -1;
+			goto error;
 		} else {
-			char value = '\0';
-			struct update_structure *update =
-			    create_update_structure(key_name, &value, '4');
 			int status;
 
 			pr_info("kv : unlock_key: %s\n", key_name);
@@ -721,8 +851,21 @@ int kv_unlock_key(const char *key_name)
 				pr_info("dlmlock : lock error, status: %i\n",
 					status);
 			}
-			return status;
+			goto error;
 		}
 	}
+	goto out;
+
+error:
+	pr_info("kv_unlock_key error: %i\n", status);
+	status = leave_critical_section();
+	if (!status) {
+		pr_info("leave_critical_section error %i\n", status);
+	}
+
+out:
+	delete_update_structure(update);
+	return status;
 }
 EXPORT_SYMBOL(kv_unlock_key);
+

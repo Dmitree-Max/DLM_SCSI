@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include <linux/completion.h>
 #include <linux/workqueue.h>
+#include <linux/mutex.h>
 
 #include "global_vars.h"
 #include "structures.h"
