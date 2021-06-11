@@ -76,11 +76,14 @@ void delete_key_node(struct key_node *node);
 // creates new dlm block, key and value values copied to new allocated memory
 struct dlm_block *create_dlm_block(const char *key, const char *value);
 
+// creates update structure. Allocates memory for key and value.
+struct update_structure *create_empty_update_structure(void);
+
 // creates update structure, key and value values copied to new allocated memory
 struct update_structure *create_update_structure(const char *key,
 						 const char *value, char type);
 
+// frees structure memoty
+void delete_update_structure(struct update_structure * update);
 // creates update with target structure, update not reallocated
-struct update_with_target *create_update_target(struct update_structure *update,
-						int target);
 #endif

@@ -184,12 +184,7 @@ void update_from_buffer(struct update_structure *update, const char *buffer)
 	memcpy(&key_length, buffer + 1, 1);
 	memcpy(&value_length, buffer + 2, 1);
 
-	new_key   = kcalloc(key_length   + 1, sizeof(char), GFP_KERNEL);
-	new_value = kcalloc(value_length + 1, sizeof(char), GFP_KERNEL);
+	memcpy(update->key, buffer + 3, key_length);
+	memcpy(update->value, buffer + 3 + key_length, value_length);
 
-	memcpy(new_key, buffer + 3, key_length);
-	memcpy(new_value, buffer + 3 + key_length, value_length);
-
-	update->key = new_key;
-	update->value = new_value;
 }

@@ -50,14 +50,7 @@ int update_or_add_key(const char *key, const char *value)
 	while (cur_node != NULL) {
 		if (strcmp(cur_node->data->key, key) == 0) {
 			printk("dlm : update_or_add_key: key updated");
-			kfree(cur_node->data->value);
-
-			new_value =
-			    (char *)kcalloc(strlen(value) + 1, sizeof(char),
-					    GFP_KERNEL);
-			strncpy(new_value, value, strlen(value) + 1);
-
-			cur_node->data->value = new_value;
+			strncpy(cur_node->data->value, value, KV_MAX_KEY_NAME_LENGTH);
 			return 0;
 		}
 		cur_node = cur_node->next;

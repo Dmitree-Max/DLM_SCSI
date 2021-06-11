@@ -59,20 +59,20 @@ struct lock *create_lock(const char *key, const char *owner)
 		goto out;
 	}
 
-	new_key = kcalloc(strlen(key) + 1, sizeof(char), GFP_KERNEL);
+	new_key = kcalloc(KV_MAX_KEY_NAME_LENGTH, sizeof(char), GFP_KERNEL);
 	if (!new_key) {
 		error = -ENOMEM;
 		goto out;
 	}
 
-	new_owner = kcalloc(strlen(owner) + 1, sizeof(char), GFP_KERNEL);
+	new_owner = kcalloc(KV_MAX_KEY_NAME_LENGTH, sizeof(char), GFP_KERNEL);
 	if (!new_owner) {
 		error = -ENOMEM;
 		goto out;
 	}
 
-	strcpy(new_owner, owner);
-	strcpy(new_key, key);
+	strncpy(new_owner, owner, KV_MAX_KEY_NAME_LENGTH);
+	strncpy(new_key, key, KV_MAX_KEY_NAME_LENGTH);
 
 	new_lock->owner = new_owner;
 	new_lock->key = new_key;
@@ -106,7 +106,7 @@ struct dlm_block *create_dlm_block(const char *key, const char *value)
 		goto out;
 	}
 
-	strncpy(newkey, key, KV_MAX_KEY_NAME_LENGTH - 1);
+	strncpy(newkey, key, KV_MAX_KEY_NAME_LENGTH);
 
 	newvalue = kcalloc(PR_DLM_LVB_LEN, sizeof(char), GFP_KERNEL);
 	if (!newvalue) {
@@ -114,7 +114,7 @@ struct dlm_block *create_dlm_block(const char *key, const char *value)
 		goto out;
 	}
 
-	strncpy(newvalue, value, PR_DLM_LVB_LEN - 1);
+	strncpy(newvalue, value, PR_DLM_LVB_LEN);
 
 	compl = kmalloc(sizeof(struct completion), GFP_KERNEL);
 	if (!compl) {
@@ -157,6 +157,46 @@ struct lock_node *create_lock_node(struct lock *lock)
 	return new_node;
 }
 
+struct update_structure *create_empty_update_structure()
+{
+	int error = 0;
+	char *key;
+	char *value;
+	struct update_structure *res;
+
+	key = kcalloc(KV_MAX_KEY_NAME_LENGTH, sizeof(char), GFP_KERNEL);
+	if (!key) {
+		error = -ENOMEM;
+		goto out;
+	}
+
+	value = kcalloc(KV_MAX_KEY_NAME_LENGTH, sizeof(char), GFP_KERNEL);
+	if (!value) {
+		error = -ENOMEM;
+		goto out;
+	}
+
+	res = kmalloc(sizeof(struct update_structure), GFP_KERNEL);
+	if (!res) {
+		error = -ENOMEM;
+		goto out;
+	}
+	res->key = key;
+	res->value = value;
+out:
+	if (error != 0) {
+		pr_info("error: %i\n", error);
+	}
+	return res;
+}
+
+void delete_update_structure(struct update_structure * update)
+{
+	kfree(update->key);
+	kfree(update->value);
+	kfree(update);
+}
+
 struct update_structure *create_update_structure(const char *key,
 						 const char *value, char type)
 {
@@ -171,13 +211,13 @@ struct update_structure *create_update_structure(const char *key,
 		goto out;
 	}
 
-	strncpy(newkey, key, KV_MAX_KEY_NAME_LENGTH - 1);
+	strncpy(newkey, key, KV_MAX_KEY_NAME_LENGTH);
 	newvalue = kcalloc(KV_MAX_KEY_NAME_LENGTH, sizeof(char), GFP_KERNEL);
 	if (!newvalue) {
 		error = -ENOMEM;
 		goto out;
 	}
-	strncpy(newvalue, value, KV_MAX_KEY_NAME_LENGTH - 1);
+	strncpy(newvalue, value, KV_MAX_KEY_NAME_LENGTH);
 	res = kmalloc(sizeof(struct update_structure), GFP_KERNEL);
 	if (!res) {
 		error = -ENOMEM;
@@ -186,28 +226,6 @@ struct update_structure *create_update_structure(const char *key,
 	res->key = newkey;
 	res->value = newvalue;
 	res->type = type;
-out:
-	if (error != 0) {
-		pr_info("error: %i\n", error);
-	}
-	return res;
-}
-
-struct update_with_target *create_update_target(struct update_structure *update,
-						int target)
-{
-	int error = 0;
-
-	struct update_with_target *res =
-	    kmalloc(sizeof(struct update_with_target), GFP_KERNEL);
-	if (!res) {
-		error = -ENOMEM;
-		goto out;
-	}
-
-	res->update = update;
-	res->target_id = target;
-
 out:
 	if (error != 0) {
 		pr_info("error: %i\n", error);
@@ -245,7 +263,7 @@ struct key_value *create_key(const char *key, const char *value)
 		goto out;
 	}
 
-	strncpy(new_key, key, KV_MAX_KEY_NAME_LENGTH - 1);
+	strncpy(new_key, key, KV_MAX_KEY_NAME_LENGTH);
 
 	new_value = kcalloc(KV_MAX_KEY_NAME_LENGTH, sizeof(char), GFP_KERNEL);
 	if (!new_value) {
@@ -253,7 +271,7 @@ struct key_value *create_key(const char *key, const char *value)
 		goto out;
 	}
 
-	strncpy(new_value, value, KV_MAX_KEY_NAME_LENGTH - 1);
+	strncpy(new_value, value, KV_MAX_KEY_NAME_LENGTH);
 
 //	replace_char(new_key, '\n', ' ');
 //	replace_char(new_value, '\n', ' ');

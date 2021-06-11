@@ -21,6 +21,6 @@ extern char temp_buffer[];
 
 extern int node_amount;
 extern char **node_list;
-extern struct dlm_block **sys_locks;
+
 
 #endif
