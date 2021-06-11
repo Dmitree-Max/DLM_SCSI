@@ -22,7 +22,15 @@ rmmod ckv
 
 # Possible interaction:
 
-- `cat /dev/ckv`: to see all info
-- `echo 'add-key key value' > /dev/ckv`: to add key 'key' with value 'value'
+- `cat /dev/ckv`: to print whole state
+- `echo 'add-key key value' > /dev/ckv`: to add key 'key' with value 'value' or update 'key' with new value 'value'
+- `echo 'remove-key key' > /dev/ckv`:  to remove key
 - `echo 'lock-key key' > /dev/ckv`: to lock key (will be locked according to locking machine id)
 - `echo 'unlock-key key' > /dev/ckv`: to unlock key 
+
+
+Usage logic:
+1) Locked key can be updated or unlocked only by node that had locked it.
+2) One key can have 1 or zero locks.
+3) Wrong commands will have no effect.
+4) State on all nodes of cluster is always the same.
